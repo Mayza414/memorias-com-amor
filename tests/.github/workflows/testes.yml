@@ -1,0 +1,15 @@
+name: Testes Automatizados MCA
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+      - run: npm install
+      - run: npx vitest run
