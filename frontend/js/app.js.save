@@ -1,0 +1,1227 @@
+/* =====================================================
+   MEMÓRIAS COM AMOR — app.js
+   ===================================================== */
+
+const API_URL = 'http://172.24.208.1:8000/api';
+
+/* ========== API CLIENT ========== */
+const ApiClient = {
+  async request(endpoint, method = 'GET', body = null, token = null) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const options = { method, headers };
+    if (body) options.body = JSON.stringify(body);
+
+    let response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, options);
+    } catch (err) {
+      throw new Error('Sem conexão com o servidor. Verifique sua internet.');
+    }
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Erro na requisição');
+    return data;
+  },
+};
+
+/* ========== AUTH ========== */
+const Auth = {
+  signUp: (email, password, name) => ApiClient.request('/auth/register', 'POST', { name, email, password }),
+  signIn: (email, password) => ApiClient.request('/auth/login', 'POST', { email, password }),
+  refresh: (refresh_token) => ApiClient.request('/auth/refresh', 'POST', { refresh_token }),
+  me: (token) => ApiClient.request('/auth/me', 'GET', null, token),
+};
+
+/* ========== DATABASE ========== */
+const DB = {
+  getAlbums: (token) => ApiClient.request('/albums', 'GET', null, token),
+  createAlbum: (album, token) => ApiClient.request('/albums', 'POST', album, token),
+  updateAlbum: (id, data, token) => ApiClient.request(`/albums/${id}`, 'PATCH', data, token),
+  deleteAlbum: (id, token) => ApiClient.request(`/albums/${id}`, 'DELETE', null, token),
+  getPhotos: (albumId, token) => ApiClient.request(`/photos/album/${albumId}`, 'GET', null, token),
+  getAllPhotos: (token) => ApiClient.request('/photos/all', 'GET', null, token),
+  createPhoto: (photo, token) => ApiClient.request('/photos', 'POST', photo, token),
+  updatePhoto: (id, data, token) => ApiClient.request(`/photos/${id}`, 'PATCH', data, token),
+  deletePhoto: (id, token) => ApiClient.request(`/photos/${id}`, 'DELETE', null, token),
+  toggleFav: (id, token) => ApiClient.request(`/photos/${id}/fav`, 'POST', null, token),
+
+  async getFavorites(token) {
+    const all = await ApiClient.request('/photos/all', 'GET', null, token);
+    return all.filter(p => p.is_fav);
+  },
+};
+
+/* ========== STORAGE ========== */
+const Storage = {
+  async upload(file, albumId, token, onProgress) {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('album_id', albumId);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}/photos/upload`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(new Error(data.detail || 'Erro no upload'));
+        } catch {
+          reject(new Error('Resposta inválida do servidor'));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Falha na conexão durante upload'));
+      xhr.send(formData);
+    });
+  },
+};
+
+/* ========== APP PRINCIPAL ========== */
+const App = (() => {
+
+  /* ---- State ---- */
+  const state = {
+    user: null,
+    albums: [],
+    albumsFiltered: null,   // null = show all
+    currentAlbumId: null,
+    currentPhotos: [],
+    pendingFiles: [],
+    lightbox: { photos: [], index: 0 },
+    editingAlbum: false,    // false = creating, true = editing
+    confirmCallback: null,
+    activeCategory: 'all',
+    activeSort: 'recent',
+  };
+
+  /* ---- Session ---- */
+  function saveSession() {
+    try {
+      localStorage.setItem('mca_session', JSON.stringify({
+        id: state.user.id,
+        email: state.user.email,
+        name: state.user.name,
+        refreshToken: state.user.refreshToken,
+      }));
+    } catch { /* storage unavailable */ }
+  }
+
+  function clearSession() {
+    try { localStorage.removeItem('mca_session'); } catch { }
+  }
+
+  async function restoreSession() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('mca_session') || 'null');
+      if (!saved?.refreshToken) return false;
+      const tokens = await Auth.refresh(saved.refreshToken);
+      state.user = { ...saved, token: tokens.access_token, refreshToken: tokens.refresh_token };
+      saveSession();
+      return true;
+    } catch {
+      clearSession();
+      return false;
+    }
+  }
+
+
+
+
+Declaration or statement expected.ts(1128)clear
+k
+
+  /* ========== PASSWORD HELPERS ========== */
+  function togglePassword(inputId, btn) {
+    const input = document.getElementById(inputId);
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    btn.setAttribute('aria-label', isPass ? 'Ocultar senha' : 'Mostrar senha');
+    btn.style.color = isPass ? 'var(--pink-main)' : '';
+  }
+
+  function measurePasswordStrength(pass) {
+    if (!pass) return { w: 0, color: 'transparent', label: '' };
+    let score = 0;
+    if (pass.length >= 8) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    const map = [
+      { w: '20%', color: '#E53E3E', label: 'Muito fraca' },
+      { w: '40%', color: '#E53E3E', label: 'Fraca' },
+      { w: '60%', color: '#D97706', label: 'Razoável' },
+      { w: '80%', color: '#059669', label: 'Boa' },
+      { w: '100%', color: '#059669', label: 'Excelente' },
+    ];
+    return map[score];
+  }
+
+  /* ========== AUTH ========== */
+  async function login() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('login-error');
+    const btn = document.getElementById('btn-login');
+
+    hideEl(errEl);
+    if (!email || !pass) { showError(errEl, 'Preencha e-mail e senha.'); return; }
+
+    setLoading(btn, 'Entrando…');
+    try {
+      const auth = await Auth.signIn(email, pass);
+      setUserFromAuth(auth);
+      saveSession();
+      bootApp();
+    } catch (e) {
+      showError(errEl, e.message);
+    } finally {
+      resetBtn(btn, 'Entrar');
+    }
+  }
+
+  async function register() {
+    const name = document.getElementById('reg-name').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const pass = document.getElementById('reg-pass').value;
+    const errEl = document.getElementById('reg-error');
+    const btn = document.getElementById('btn-register');
+
+    hideEl(errEl);
+    if (!name) { showError(errEl, 'Informe seu nome.'); return; }
+    if (!email || !email.includes('@')) { showError(errEl, 'E-mail inválido.'); return; }
+    if (pass.length < 6) { showError(errEl, 'Senha mínima de 6 caracteres.'); return; }
+
+    setLoading(btn, 'Criando conta…');
+    try {
+      const auth = await Auth.signUp(email, pass, name);
+      setUserFromAuth(auth);
+      saveSession();
+      bootApp();
+    } catch (e) {
+      showError(errEl, e.message);
+    } finally {
+      resetBtn(btn, 'Criar conta');
+    }
+  }
+
+  function setUserFromAuth(auth) {
+    state.user = {
+      id: auth.user.id,
+      email: auth.user.email,
+      name: auth.user.name,
+      token: auth.access_token,
+      refreshToken: auth.refresh_token,
+    };
+  }
+
+  async function loginDemo() {
+    document.getElementById('login-email').value = 'demo@email.com';
+    document.getElementById('login-pass').value = '123456';
+    await login();
+  }
+
+  function logout() {
+    clearSession();
+    Object.assign(state, { user: null, albums: [], currentPhotos: [] });
+    showEl('screen-auth', true);
+    hideEl2('screen-app');
+    toast('Até logo! 👋');
+  }
+
+  function showLogin() {
+    hideEl(document.getElementById('tab-register'));
+    showEl2('tab-login', true);
+  }
+
+  function showRegister() {
+    hideEl(document.getElementById('tab-login'));
+    showEl2('tab-register', true);
+  }
+
+  /* ========== BOOT ========== */
+  function bootApp() {
+    hideEl(document.getElementById('screen-auth'));
+    showEl2('screen-app', true);
+    renderSidebarUser();
+    setupCharCounts();
+    setupPasswordStrength();
+    navigate('albums');
+  }
+
+  function renderSidebarUser() {
+    const u = state.user;
+    document.getElementById('sidebar-user').innerHTML = `
+      <div class="user-avatar">${getInitials(u.name)}</div>
+      <div class="user-name">${esc(u.name)}</div>
+      <div class="user-email">${esc(u.email)}</div>`;
+  }
+
+  function setupCharCounts() {
+    watchCharCount('album-title', 'album-title-count', 60);
+    watchCharCount('album-desc', 'album-desc-count', 200);
+  }
+
+  function watchCharCount(inputId, countId, max) {
+    const input = document.getElementById(inputId);
+    const count = document.getElementById(countId);
+    if (!input || !count) return;
+    const update = () => {
+      const len = input.value.length;
+      count.textContent = `${len}/${max}`;
+      count.style.color = len > max * 0.9 ? 'var(--pink-main)' : '';
+    };
+    input.addEventListener('input', update);
+  }
+
+  function setupPasswordStrength() {
+    const input = document.getElementById('reg-pass');
+    const bar = document.getElementById('reg-pass-strength');
+    if (!input || !bar) return;
+    input.addEventListener('input', () => {
+      const s = measurePasswordStrength(input.value);
+      bar.style.setProperty('--strength-w', s.w);
+      bar.style.setProperty('--strength-color', s.color);
+    });
+  }
+
+  /* ========== NAVIGATION ========== */
+  function navigate(view) {
+    document.querySelectorAll('.view').forEach(v => {
+      v.classList.remove('active');
+      v.classList.add('hidden');
+    });
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    n.removeAttribute('aria-current');
+
+    const el = document.getElementById('view-' + view);
+    if (el) { el.classList.remove('hidden'); el.classList.add('active'); }
+
+    const navMap = { albums: 0, favorites: 1, timeline: 2 };
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navMap[view] !== undefined) {
+      const ni = navItems[navMap[view]];
+      if (ni) { ni.classList.add('active'); ni.setAttribute('aria-current', 'page'); }
+    }
+
+    if (view === 'albums') loadAlbums();
+    if (view === 'favorites') loadFavorites();
+    if (view === 'timeline') loadTimeline();
+
+    closeSidebar();
+  }
+
+  // fix: missing variable n in forEach
+  // re-define navigate properly
+  /* override */ window._navigateFixed = function navigate(view) {
+    document.querySelectorAll('.view').forEach(v => {
+      v.classList.remove('active');
+      v.classList.add('hidden');
+    });
+    document.querySelectorAll('.nav-item').forEach(n => {
+      n.classList.remove('active');
+      n.removeAttribute('aria-current');
+    });
+
+    const el = document.getElementById('view-' + view);
+    if (el) { el.classList.remove('hidden'); el.classList.add('active'); }
+
+    const navMap = { albums: 0, favorites: 1, timeline: 2 };
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navMap[view] !== undefined) {
+      const ni = navItems[navMap[view]];
+      if (ni) { ni.classList.add('active'); ni.setAttribute('aria-current', 'page'); }
+    }
+
+    if (view === 'albums') loadAlbums();
+    if (view === 'favorites') loadFavorites();
+    if (view === 'timeline') loadTimeline();
+
+    closeSidebar();
+  };
+
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const hamburger = document.getElementById('hamburger-btn');
+    const isOpen = sidebar.classList.toggle('open');
+    overlay.classList.toggle('visible', isOpen);
+    hamburger.classList.toggle('open', isOpen);
+    hamburger.setAttribute('aria-expanded', String(isOpen));
+  }
+
+  function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const hamburger = document.getElementById('hamburger-btn');
+    sidebar.classList.remove('open');
+    overlay.classList.remove('visible');
+    hamburger?.classList.remove('open');
+    hamburger?.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleMobileSearch() {
+    const bar = document.getElementById('mobile-search-bar');
+    const isHidden = bar.classList.contains('hidden');
+    bar.classList.toggle('hidden', !isHidden);
+    bar.classList.toggle('active', isHidden);
+    if (isHidden) bar.querySelector('input').focus();
+  }
+
+  /* ========== ALBUMS ========== */
+  async function loadAlbums() {
+    const grid = document.getElementById('albums-grid');
+    const empty = document.getElementById('albums-empty');
+    const count = document.getElementById('albums-count');
+
+    empty.classList.add('hidden');
+    renderAlbumSkeletons(grid);
+
+    try {
+      state.albums = await DB.getAlbums(state.user.token);
+      updateBadge('nav-badge-albums', state.albums.length);
+      renderAlbums();
+    } catch (e) {
+      grid.innerHTML = '';
+      toast('Erro ao carregar álbuns: ' + e.message, 'error');
+    }
+  }
+
+  function renderAlbumSkeletons(grid, count = 6) {
+    grid.innerHTML = Array.from({ length: count }, () => `
+      <div class="album-skeleton">
+        <div class="skeleton-cover"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line short"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  function renderAlbums() {
+    const grid = document.getElementById('albums-grid');
+    const empty = document.getElementById('albums-empty');
+    const count = document.getElementById('albums-count');
+
+    let albums = [...state.albums];
+
+    // Category filter
+    if (state.activeCategory !== 'all') {
+      albums = albums.filter(a => a.category === state.activeCategory);
+    }
+
+    // Search filter
+    const q = document.getElementById('sidebar-search')?.value.toLowerCase().trim();
+    if (q) albums = albums.filter(a =>
+      a.title.toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q)
+    );
+
+    // Sort
+    albums = sortAlbumList(albums, state.activeSort);
+
+    if (!albums.length) {
+      grid.innerHTML = '';
+      empty.classList.remove('hidden');
+      count.textContent = '';
+      return;
+    }
+
+    empty.classList.add('hidden');
+    count.textContent = `${albums.length} álbum${albums.length !== 1 ? 's' : ''}`;
+
+    grid.innerHTML = albums.map(album => {
+      const dateLabel = album.commemorative_date
+        ? `<span class="album-date-badge">📅 ${formatDate(album.commemorative_date)}</span>` : '';
+      const cover = album.cover_url
+        ? `<div class="album-cover"><img src="${esc(album.cover_url)}" alt="" loading="lazy" /></div>`
+        : `<div class="album-cover-placeholder">${categoryEmoji(album.category)}</div>`;
+      return `
+        <div class="album-card" onclick="App.openAlbum('${album.id}')" tabindex="0"
+             onkeydown="if(event.key==='Enter')App.openAlbum('${album.id}')"
+             role="button" aria-label="Álbum ${esc(album.title)}">
+          ${cover}
+          <div class="album-info">
+            <span class="album-category-badge">${categoryEmoji(album.category)} ${categoryLabel(album.category)}</span>
+            <div class="album-title">${esc(album.title)}</div>
+            <div class="album-meta">
+              <span>${album.photo_count || 0} foto${album.photo_count !== 1 ? 's' : ''}</span>
+              ${dateLabel}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function sortAlbumList(albums, sort) {
+    switch (sort) {
+      case 'oldest': return [...albums].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      case 'name': return [...albums].sort((a, b) => a.title.localeCompare(b.title, 'pt'));
+      case 'photos': return [...albums].sort((a, b) => (b.photo_count || 0) - (a.photo_count || 0));
+      default: return [...albums].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+  }
+
+  function sortAlbums(value) {
+    state.activeSort = value;
+    renderAlbums();
+  }
+
+  function filterCategory(cat) {
+    state.activeCategory = cat;
+    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
+    renderAlbums();
+  }
+
+  function searchAlbums(query) {
+    renderAlbums();
+  }
+
+  async function openAlbum(id) {
+    state.currentAlbumId = id;
+    const album = state.albums.find(a => a.id === id);
+    if (!album) return;
+
+    window._navigateFixed('album-detail');
+    document.getElementById('view-album-detail').classList.remove('hidden');
+    document.getElementById('view-album-detail').classList.add('active');
+
+    renderAlbumDetailHeader(album, []);
+
+    const grid = document.getElementById('album-photos-grid');
+    grid.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Carregando fotos…</div>';
+    document.getElementById('album-photos-empty').classList.add('hidden');
+    document.getElementById('photos-toolbar').classList.add('hidden');
+
+    try {
+      state.currentPhotos = await DB.getPhotos(id, state.user.token);
+      renderAlbumDetailHeader(album, state.currentPhotos);
+      renderPhotoGrid('album-photos-grid', 'album-photos-empty', state.currentPhotos);
+      updatePhotosToolbar();
+    } catch (e) {
+      grid.innerHTML = '';
+      toast('Erro ao carregar fotos: ' + e.message, 'error');
+    }
+  }
+
+  function renderAlbumDetailHeader(album, photos) {
+    document.getElementById('album-detail-header').innerHTML = `
+      <div class="album-detail-title">${esc(album.title)}</div>
+      ${album.description ? `<div class="album-detail-desc">${esc(album.description)}</div>` : ''}
+      <div class="album-detail-badges">
+        <span class="album-category-badge">${categoryEmoji(album.category)} ${categoryLabel(album.category)}</span>
+        ${album.commemorative_date ? `<span class="album-date-badge">📅 ${formatDate(album.commemorative_date)}</span>` : ''}
+        <span class="album-category-badge" style="background:var(--purple-light);color:var(--purple-dark)">
+          ${photos.length} foto${photos.length !== 1 ? 's' : ''}
+        </span>
+      </div>`;
+  }
+
+  function updatePhotosToolbar() {
+    const toolbar = document.getElementById('photos-toolbar');
+    const count = document.getElementById('photos-toolbar-count');
+    const n = state.currentPhotos.length;
+    if (n > 0) {
+      toolbar.classList.remove('hidden');
+      toolbar.classList.add('active');
+      count.textContent = `${n} foto${n !== 1 ? 's' : ''}`;
+    } else {
+      toolbar.classList.add('hidden');
+    }
+  }
+
+  function openNewAlbum() {
+    state.editingAlbum = false;
+    document.getElementById('modal-album-title').textContent = 'Novo álbum';
+    document.getElementById('btn-save-album').textContent = 'Criar álbum';
+    document.getElementById('album-title').value = '';
+    document.getElementById('album-desc').value = '';
+    document.getElementById('album-date').value = '';
+    document.getElementById('album-category').value = 'amor';
+    openModal('modal-album');
+    setTimeout(() => document.getElementById('album-title').focus(), 100);
+  }
+
+  function openEditAlbum() {
+    const album = state.albums.find(a => a.id === state.currentAlbumId);
+    if (!album) return;
+    state.editingAlbum = true;
+    document.getElementById('modal-album-title').textContent = 'Editar álbum';
+    document.getElementById('btn-save-album').textContent = 'Salvar alterações';
+    document.getElementById('album-title').value = album.title;
+    document.getElementById('album-desc').value = album.description || '';
+    document.getElementById('album-date').value = album.commemorative_date || '';
+    document.getElementById('album-category').value = album.category || 'amor';
+    openModal('modal-album');
+  }
+
+  async function saveAlbum() {
+    if (state.editingAlbum) {
+      await updateCurrentAlbum();
+    } else {
+      await createAlbum();
+    }
+  }
+
+  async function createAlbum() {
+    const title = document.getElementById('album-title').value.trim();
+    if (!title) { toast('Dê um nome ao álbum ♥', 'error'); return; }
+
+    const album = {
+      title,
+      description: document.getElementById('album-desc').value.trim(),
+      category: document.getElementById('album-category').value,
+      commemorative_date: document.getElementById('album-date').value || null,
+    };
+
+    const btn = document.getElementById('btn-save-album');
+    setLoading(btn, 'Criando…');
+    try {
+      const created = await DB.createAlbum(album, state.user.token);
+      toast('Álbum criado! ✨', 'success');
+      closeModalById('modal-album');
+      state.albums.unshift(created);
+      updateBadge('nav-badge-albums', state.albums.length);
+      state.currentAlbumId = created.id;
+      state.currentPhotos = [];
+      window._navigateFixed('album-detail');
+      document.getElementById('view-album-detail').classList.remove('hidden');
+      document.getElementById('view-album-detail').classList.add('active');
+      renderAlbumDetailHeader(created, []);
+      renderPhotoGrid('album-photos-grid', 'album-photos-empty', []);
+      document.getElementById('photos-toolbar').classList.add('hidden');
+    } catch (e) {
+      toast('Erro ao criar álbum: ' + e.message, 'error');
+    } finally {
+      resetBtn(btn, 'Criar álbum');
+    }
+  }
+
+  async function updateCurrentAlbum() {
+    const title = document.getElementById('album-title').value.trim();
+    if (!title) { toast('O álbum precisa de um nome.', 'error'); return; }
+
+    const data = {
+      title,
+      description: document.getElementById('album-desc').value.trim(),
+      category: document.getElementById('album-category').value,
+      commemorative_date: document.getElementById('album-date').value || null,
+    };
+
+    const btn = document.getElementById('btn-save-album');
+    setLoading(btn, 'Salvando…');
+    try {
+      const updated = await DB.updateAlbum(state.currentAlbumId, data, state.user.token);
+      const idx = state.albums.findIndex(a => a.id === state.currentAlbumId);
+      if (idx !== -1) state.albums[idx] = { ...state.albums[idx], ...updated };
+      closeModalById('modal-album');
+      const album = state.albums.find(a => a.id === state.currentAlbumId);
+      if (album) renderAlbumDetailHeader(album, state.currentPhotos);
+      toast('Álbum atualizado!', 'success');
+    } catch (e) {
+      toast('Erro ao atualizar: ' + e.message, 'error');
+    } finally {
+      resetBtn(btn, 'Salvar alterações');
+    }
+  }
+
+  function deleteAlbum() {
+    confirmAction(
+      'Excluir este álbum e todas as suas fotos? Esta ação não pode ser desfeita.',
+      async () => {
+        try {
+          await DB.deleteAlbum(state.currentAlbumId, state.user.token);
+          state.albums = state.albums.filter(a => a.id !== state.currentAlbumId);
+          updateBadge('nav-badge-albums', state.albums.length);
+          toast('Álbum excluído.', 'success');
+          window._navigateFixed('albums');
+          renderAlbums();
+        } catch (e) {
+          toast('Erro ao excluir: ' + e.message, 'error');
+        }
+      }
+    );
+  }
+
+  /* ========== PHOTOS ========== */
+  function renderPhotoGrid(gridId, emptyId, photos) {
+    const grid = document.getElementById(gridId);
+    const empty = emptyId ? document.getElementById(emptyId) : null;
+
+    if (!photos.length) {
+      grid.innerHTML = '';
+      if (empty) empty.classList.remove('hidden');
+      return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+
+    grid.innerHTML = photos.map((photo, i) => `
+      <div class="photo-item ${photo.is_fav ? 'is-fav' : ''}"
+           onclick="App.openLightbox(${i})"
+           tabindex="0"
+           role="button"
+           aria-label="Ver foto${photo.caption ? ': ' + esc(photo.caption) : ''}">
+        <img src="${esc(photo.url)}" alt="${esc(photo.caption || '')}" loading="lazy" />
+        <div class="photo-overlay">
+          ${photo.caption ? `<span class="photo-caption">${esc(photo.caption)}</span>` : ''}
+        </div>
+        <button class="photo-fav"
+                onclick="App.toggleFav(event,'${photo.id}',${!!photo.is_fav})"
+                aria-label="${photo.is_fav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}">
+          ${photo.is_fav ? '♥' : '♡'}
+        </button>
+      </div>`).join('');
+  }
+
+  async function toggleFav(event, photoId, currentFav) {
+    event.stopPropagation();
+    try {
+      await DB.toggleFav(photoId, state.user.token);
+      const p = state.currentPhotos.find(p => p.id === photoId);
+      if (p) p.is_fav = !p.is_fav;
+      renderPhotoGrid('album-photos-grid', 'album-photos-empty', state.currentPhotos);
+    } catch (e) {
+      toast('Erro ao favoritar: ' + e.message, 'error');
+    }
+  }
+
+  function sortPhotos(value) {
+    let photos = [...state.currentPhotos];
+    switch (value) {
+      case 'oldest': photos.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); break;
+      case 'fav': photos.sort((a, b) => (b.is_fav ? 1 : 0) - (a.is_fav ? 1 : 0)); break;
+      default: photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); break;
+    }
+    renderPhotoGrid('album-photos-grid', 'album-photos-empty', photos);
+    state.lightbox.photos = photos;
+  }
+
+  /* ========== FAVORITES ========== */
+  async function loadFavorites() {
+    const grid = document.getElementById('favorites-grid');
+    const empty = document.getElementById('favorites-empty');
+    grid.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Carregando…</div>';
+
+    try {
+      const favs = await DB.getFavorites(state.user.token);
+      updateBadge('nav-badge-favs', favs.length);
+
+      if (!favs.length) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      state.lightbox = { photos: favs, index: 0 };
+
+      grid.innerHTML = favs.map((photo, i) => `
+        <div class="photo-item is-fav" onclick="App.openGlobalLightbox(${i})" tabindex="0" role="button">
+          <img src="${esc(photo.url)}" alt="" loading="lazy" />
+          <div class="photo-overlay">
+            ${photo.caption ? `<span class="photo-caption">${esc(photo.caption)}</span>` : ''}
+          </div>
+          <button class="photo-fav" onclick="App.toggleFavGlobal(event,'${photo.id}')" aria-label="Remover dos favoritos">♥</button>
+        </div>`).join('');
+    } catch (e) {
+      grid.innerHTML = '';
+      toast('Erro ao carregar favoritos: ' + e.message, 'error');
+    }
+  }
+
+  async function toggleFavGlobal(event, photoId) {
+    event.stopPropagation();
+    try {
+      await DB.toggleFav(photoId, state.user.token);
+      toast('Removido dos favoritos', 'success');
+      loadFavorites();
+    } catch (e) {
+      toast('Erro ao atualizar: ' + e.message, 'error');
+    }
+  }
+
+  function openGlobalLightbox(index) {
+    state.lightbox.index = index;
+    showLightbox();
+  }
+
+  /* ========== TIMELINE ========== */
+  async function loadTimeline() {
+    const container = document.getElementById('timeline-content');
+    container.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center">Carregando…</div>';
+
+    try {
+      const allPhotos = await DB.getAllPhotos(state.user.token);
+
+      if (!allPhotos.length) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📅</div>
+            <h3>Ainda sem fotos</h3>
+            <p>Adicione fotos aos seus álbuns para vê-las aqui</p>
+          </div>`;
+        return;
+      }
+
+      // Group by year-month
+      const groups = {};
+      allPhotos.forEach(p => {
+        const key = p.photo_date ? p.photo_date.substring(0, 7) : 'sem-data';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(p);
+      });
+
+      // Sort groups newest first
+      const sortedKeys = Object.keys(groups).sort((a, b) => {
+        if (a === 'sem-data') return 1;
+        if (b === 'sem-data') return -1;
+        return b.localeCompare(a);
+      });
+
+      container.innerHTML = sortedKeys.map(month => `
+        <div class="timeline-group">
+          <div class="timeline-month">${formatMonth(month)}</div>
+          <div class="photo-grid">
+            ${groups[month].map(photo => `
+              <div class="photo-item">
+                <img src="${esc(photo.url)}" alt="" loading="lazy" />
+                <div class="photo-overlay">
+                  <span class="photo-caption">${esc(photo.album?.title || '')}</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`).join('');
+
+    } catch (e) {
+      container.innerHTML = '';
+      toast('Erro ao carregar linha do tempo: ' + e.message, 'error');
+    }
+  }
+
+  /* ========== UPLOAD ========== */
+  function openUpload() {
+    state.pendingFiles = [];
+    document.getElementById('preview-grid').innerHTML = '';
+    document.getElementById('preview-grid').classList.add('hidden');
+    document.getElementById('btn-upload').disabled = true;
+    document.getElementById('file-input').value = '';
+    hideEl(document.getElementById('upload-progress'));
+    openModal('modal-upload');
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.add('drag-over');
+  }
+
+  function onDragLeave() {
+    document.getElementById('upload-zone').classList.remove('drag-over');
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.remove('drag-over');
+    handleFiles(Array.from(e.dataTransfer.files));
+  }
+
+  function onFileSelect(e) {
+    handleFiles(Array.from(e.target.files));
+  }
+
+  function handleFiles(files) {
+    const MAX_MB = 20;
+    const valid = files.filter(f => f.type.startsWith('image/') && f.size <= MAX_MB * 1024 * 1024);
+    const ignored = files.length - valid.length;
+    if (ignored) toast(`${ignored} arquivo(s) ignorado(s) — tamanho máx. ${MAX_MB}MB.`, 'error');
+
+    valid.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        state.pendingFiles.push({ id: crypto.randomUUID(), url: ev.target.result, _file: file });
+        renderPreviews();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderPreviews() {
+    const grid = document.getElementById('preview-grid');
+    grid.innerHTML = state.pendingFiles.map((f, i) => `
+      <div class="preview-item">
+        <img src="${f.url}" alt="" />
+        <button class="preview-remove" onclick="App.removePreview(${i})" aria-label="Remover imagem">×</button>
+      </div>`).join('');
+    grid.classList.toggle('hidden', state.pendingFiles.length === 0);
+    document.getElementById('btn-upload').disabled = state.pendingFiles.length === 0;
+  }
+
+  function removePreview(i) {
+    state.pendingFiles.splice(i, 1);
+    renderPreviews();
+  }
+
+  async function uploadPhotos() {
+    if (!state.currentAlbumId || !state.pendingFiles.length) return;
+
+    const btn = document.getElementById('btn-upload');
+    const progress = document.getElementById('upload-progress');
+    const fill = document.getElementById('progress-fill');
+    const label = document.getElementById('progress-label');
+
+    btn.disabled = true;
+    progress.classList.remove('hidden');
+    progress.classList.add('active');
+
+    const total = state.pendingFiles.length;
+    let done = 0;
+
+    try {
+      for (const f of state.pendingFiles) {
+        label.textContent = `Enviando ${done + 1} de ${total}…`;
+        const photo = await Storage.upload(f._file, state.currentAlbumId, state.user.token, (p) => {
+          const overall = ((done + p) / total) * 100;
+          fill.style.width = `${overall}%`;
+        });
+        state.currentPhotos.push(photo);
+        done++;
+        fill.style.width = `${(done / total) * 100}%`;
+      }
+
+      // Update album cover & count
+      const album = state.albums.find(a => a.id === state.currentAlbumId);
+      if (album) {
+        album.photo_count = (album.photo_count || 0) + total;
+        if (!album.cover_url && state.currentPhotos.length > 0) {
+          album.cover_url = state.currentPhotos[0].url;
+          await DB.updateAlbum(album.id, { cover_url: album.cover_url }, state.user.token).catch(() => { });
+        }
+      }
+
+      closeModalById('modal-upload');
+      toast(`${total} foto${total !== 1 ? 's' : ''} adicionada${total !== 1 ? 's' : ''}! 📸`, 'success');
+      state.pendingFiles = [];
+      renderPhotoGrid('album-photos-grid', 'album-photos-empty', state.currentPhotos);
+      const currentAlbum = state.albums.find(a => a.id === state.currentAlbumId);
+      if (currentAlbum) renderAlbumDetailHeader(currentAlbum, state.currentPhotos);
+      updatePhotosToolbar();
+
+    } catch (e) {
+      toast('Erro ao enviar: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Adicionar fotos`;
+      hideEl(progress);
+    }
+  }
+
+  /* ========== SHARE ========== */
+  function shareAlbum() {
+    document.getElementById('share-link').value = `${window.location.origin}${window.location.pathname}?album=${state.currentAlbumId}`;
+    openModal('modal-share');
+  }
+
+  async function copyLink() {
+    const input = document.getElementById('share-link');
+    const btn = document.getElementById('btn-copy');
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch {
+      input.select();
+      document.execCommand('copy');
+    }
+    btn.textContent = '✓ Copiado!';
+    btn.classList.add('copied');
+    toast('Link copiado! ✓', 'success');
+    setTimeout(() => { btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 2000);
+  }
+
+  /* ========== LIGHTBOX ========== */
+  function openLightbox(index) {
+    state.lightbox = { photos: state.currentPhotos, index };
+    showLightbox();
+  }
+
+  function showLightbox() {
+    const { photos, index } = state.lightbox;
+    const photo = photos[index];
+    if (!photo) return;
+
+    const img = document.getElementById('lb-img');
+    const loader = document.getElementById('lb-img-loader');
+    const favIcon = document.getElementById('lb-fav-icon');
+    const favBtn = document.getElementById('lb-fav-btn');
+    const favLbl = document.getElementById('lb-fav-label');
+
+    // Show loader while image loads
+    img.style.opacity = '0.3';
+    loader.classList.add('visible');
+    img.onload = () => { img.style.opacity = '1'; loader.classList.remove('visible'); };
+    img.src = photo.url;
+    img.alt = photo.caption || '';
+
+    document.getElementById('lb-caption').textContent = photo.caption || '';
+    document.getElementById('lb-counter').textContent = `${index + 1} / ${photos.length}`;
+
+    const isFav = !!photo.is_fav;
+    favIcon.setAttribute('fill', isFav ? '#D4537E' : 'none');
+    favBtn.classList.toggle('is-fav', isFav);
+    favLbl.textContent = isFav ? 'Favoritado' : 'Favoritar';
+
+    const lb = document.getElementById('lightbox');
+    lb.classList.remove('hidden');
+    lb.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeLightboxDirect() {
+    const lb = document.getElementById('lightbox');
+    lb.classList.add('hidden');
+    lb.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  function lbPrev(e) {
+    e?.stopPropagation();
+    const len = state.lightbox.photos.length;
+    state.lightbox.index = (state.lightbox.index - 1 + len) % len;
+    showLightbox();
+  }
+
+  function lbNext(e) {
+    e?.stopPropagation();
+    state.lightbox.index = (state.lightbox.index + 1) % state.lightbox.photos.length;
+    showLightbox();
+  }
+
+  async function toggleLightboxFav() {
+    const photo = state.lightbox.photos[state.lightbox.index];
+    if (!photo) return;
+    try {
+      await DB.toggleFav(photo.id, state.user.token);
+      photo.is_fav = !photo.is_fav;
+      // Sync with currentPhotos
+      const p = state.currentPhotos.find(p => p.id === photo.id);
+      if (p) p.is_fav = photo.is_fav;
+      showLightbox();
+    } catch (e) {
+      toast('Erro ao favoritar: ' + e.message, 'error');
+    }
+  }
+
+  function addCaption() {
+    const photo = state.lightbox.photos[state.lightbox.index];
+    if (!photo) return;
+    document.getElementById('caption-input').value = photo.caption || '';
+    openModal('modal-caption');
+    setTimeout(() => document.getElementById('caption-input').focus(), 100);
+  }
+
+  async function saveCaption() {
+    const photo = state.lightbox.photos[state.lightbox.index];
+    if (!photo) return;
+    const caption = document.getElementById('caption-input').value.trim();
+    try {
+      await DB.updatePhoto(photo.id, { caption }, state.user.token);
+      photo.caption = caption;
+      const p = state.currentPhotos.find(p => p.id === photo.id);
+      if (p) p.caption = caption;
+      closeModalById('modal-caption');
+      showLightbox();
+      toast('Legenda salva!', 'success');
+    } catch (e) {
+      toast('Erro ao salvar legenda: ' + e.message, 'error');
+    }
+  }
+
+  function deletePhoto() {
+    const photo = state.lightbox.photos[state.lightbox.index];
+    if (!photo) return;
+    confirmAction('Remover esta foto permanentemente?', async () => {
+      try {
+        await DB.deletePhoto(photo.id, state.user.token);
+        state.currentPhotos = state.currentPhotos.filter(p => p.id !== photo.id);
+        state.lightbox.photos = state.lightbox.photos.filter(p => p.id !== photo.id);
+        closeLightboxDirect();
+        renderPhotoGrid('album-photos-grid', 'album-photos-empty', state.currentPhotos);
+        updatePhotosToolbar();
+        // Update album count
+        const album = state.albums.find(a => a.id === state.currentAlbumId);
+        if (album) { album.photo_count = Math.max(0, (album.photo_count || 1) - 1); }
+        toast('Foto removida.', 'success');
+      } catch (e) {
+        toast('Erro ao remover foto: ' + e.message, 'error');
+      }
+    });
+  }
+
+  /* ========== CONFIRM DIALOG ========== */
+  function confirmAction(message, callback) {
+    document.getElementById('modal-confirm-text').textContent = message;
+    state.confirmCallback = callback;
+    openModal('modal-confirm');
+    // Wire up the confirm button
+    const btn = document.getElementById('btn-confirm-action');
+    btn.onclick = async () => {
+      closeModalById('modal-confirm');
+      await callback();
+    };
+  }
+
+  /* ========== MODALS ========== */
+  function openModal(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('hidden');
+    el.classList.add('active');
+  }
+
+  function closeModalById(id) {
+    const el = document.getElementById(id);
+    el.classList.add('hidden');
+    el.classList.remove('active');
+  }
+
+  function closeModal(id, e) {
+    if (e.target.id === id) closeModalById(id);
+  }
+
+  /* ========== BADGES ========== */
+  function updateBadge(id, count) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? '99+' : count;
+      el.classList.add('visible');
+    } else {
+      el.classList.remove('visible');
+    }
+  }
+
+  /* ========== KEYBOARD ========== */
+  document.addEventListener('keydown', e => {
+    const lb = document.getElementById('lightbox');
+    if (!lb.classList.contains('hidden')) {
+      if (e.key === 'ArrowLeft') lbPrev();
+      if (e.key === 'ArrowRight') lbNext();
+      if (e.key === 'Escape') closeLightboxDirect();
+    }
+    // Close modals on Escape
+    if (e.key === 'Escape') {
+      ['modal-album', 'modal-upload', 'modal-share', 'modal-confirm', 'modal-caption'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.classList.contains('hidden')) closeModalById(id);
+      });
+    }
+  });
+
+  /* ========== TOAST ========== */
+  let toastTimer;
+
+  function toast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast' + (type ? ` toast-${type}` : '');
+    el.classList.remove('hidden');
+    el.classList.add('active');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.classList.add('hidden');
+      el.classList.remove('active');
+    }, 3200);
+  }
+
+  /* ========== HELPERS ========== */
+  function showError(el, msg) {
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function hideEl(el) { if (el) el.classList.add('hidden'); }
+  function showEl(id, flex = false) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.classList.add(flex ? 'active' : 'active');
+  }
+  function showEl2(id, flex = false) { showEl(id, flex); }
+  function hideEl2(id) { const el = document.getElementById(id); if (el) el.classList.add('hidden'); }
+
+  function setLoading(btn, text) {
+    btn.disabled = true;
+    btn.dataset.originalText = btn.textContent;
+    btn.textContent = text;
+  }
+
+  function resetBtn(btn, text) {
+    btn.disabled = false;
+    btn.textContent = text;
+  }
+
+  function getInitials(name) {
+    if (!name) return '?';
+    return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}/${y}`;
+  }
+
+  function formatMonth(ym) {
+    if (ym === 'sem-data') return 'Sem data';
+    const [y, m] = ym.split('-');
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    return `${months[parseInt(m, 10) - 1]} de ${y}`;
+  }
+
+  function categoryEmoji(c) {
+    return { amor: '💑', viagem: '✈️', aniversario: '🎂', cotidiano: '🌿', especial: '⭐', familia: '👨‍👩‍👧' }[c] || '📁';
+  }
+
+  function categoryLabel(c) {
+    return { amor: 'Amor', viagem: 'Viagem', aniversario: 'Aniversário', cotidiano: 'Cotidiano', especial: 'Especial', familia: 'Família' }[c] || c;
+  }
+
+  /* ========== INIT ========== */
+  restoreSession().then(logado => { if (logado) bootApp(); });
+
+  /* ========== PUBLIC API ========== */
+  return {
+    login, register, loginDemo, logout, showLogin, showRegister,
+    togglePassword,
+    navigate: (v) => window._navigateFixed(v),
+    toggleSidebar, closeSidebar, toggleMobileSearch,
+    openNewAlbum, openEditAlbum, saveAlbum, createAlbum, updateCurrentAlbum,
+    openAlbum, deleteAlbum,
+    sortAlbums, filterCategory, searchAlbums,
+    sortPhotos,
+    openUpload, onDragOver, onDragLeave, onDrop, onFileSelect, removePreview, uploadPhotos,
+    shareAlbum, copyLink,
+    toggleFav, toggleFavGlobal, openGlobalLightbox,
+    openLightbox, closeLightboxDirect, lbPrev, lbNext,
+    toggleLightboxFav, addCaption, saveCaption, deletePhoto,
+    openModal, closeModal, closeModalById,
+  };
+})();
+
+window.App = App;

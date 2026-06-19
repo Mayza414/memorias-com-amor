@@ -1,0 +1,45 @@
+﻿version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mca_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mca
+      POSTGRES_PASSWORD: mca_secret
+      POSTGRES_DB: memorias
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mca"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: mca_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mca:mca_secret@db:5432/memorias
+      SECRET_KEY: minha-chave-secreta-super-segura-32-caracteres
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE_MB: 20
+      ALLOWED_ORIGINS: http://localhost,http://localhost:80
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+
+volumes:
+  pg_data:
+  uploads_data:
