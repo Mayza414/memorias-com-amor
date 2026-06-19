@@ -21,5 +21,5 @@ RUN mkdir -p /app/uploads
 # Expor a porta
 EXPOSE 8000
 
-# Comando para rodar a aplicação
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando para rodar migrações e iniciar a aplicação
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
