@@ -1,17 +1,12 @@
 services:
   - type: web
-    name: memorias-backend
-    runtime: python
+    name: memorias-com-amor
+    runtime: image
     repo: https://github.com/Mayza414/memorias-com-amor
     plan: free
     region: oregon
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: memorias-db
-          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -23,9 +18,13 @@ services:
       - key: MAX_FILE_SIZE_MB
         value: 20
       - key: UPLOAD_DIR
-        value: /tmp/uploads
+        value: /app/uploads
       - key: ALLOWED_ORIGINS
-        value: https://seu-frontend.vercel.app,http://localhost:3000
+        value: https://memorias-com-amor.onrender.com,https://seu-frontend.vercel.app
+      - key: DATABASE_URL
+        fromDatabase:
+          name: memorias-db
+          property: connectionString
 
   - type: postgresql
     name: memorias-db
