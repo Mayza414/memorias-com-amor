@@ -1,11 +1,16 @@
-﻿from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
 
 settings = get_settings()
 
+# Garantir que a URL use asyncpg
+database_url = settings.database_url
+if 'postgresql://' in database_url and '+asyncpg' not in database_url:
+    database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
+
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=False,
     pool_pre_ping=True,
     pool_size=10,
