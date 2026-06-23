@@ -12,7 +12,12 @@ from app.core.config import get_settings
 settings = get_settings()
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# Forçar o uso de asyncpg
+database_url = settings.database_url
+if 'postgresql://' in database_url and '+asyncpg' not in database_url:
+    database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
+config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -41,6 +46,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    # Usar asyncpg diretamente
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
