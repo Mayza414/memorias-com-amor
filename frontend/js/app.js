@@ -2,7 +2,7 @@
    MEMÓRIAS COM AMOR — app.js (VERSÃO FUNCIONAL)
    ===================================================== */
 
-const API_URL = 'http://172.24.208.1:8000/api';
+const API_URL = 'https://memorias-com-amor.onrender.com/api';
 
 /* ========== API CLIENT ========== */
 const ApiClient = {
