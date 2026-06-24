@@ -1,3 +1,5 @@
+cd /mnt/c/Users/mayza/memorias-com-amor/backend
+cat > app/routers/photos.py << 'EOF'
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -18,21 +20,18 @@ router = APIRouter(prefix="/api/photos", tags=["photos"])
 settings = get_settings()
 
 SUPABASE_URL = "https://symrxkriawpxigkykmbd.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5bXJ4a3JpYXdweGlna3lrbWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzMzNTgsImV4cCI6MjA5NzMwOTM1OH0.qcA3fl1EYa_oAQCoiZFzsfcg5x5T8jjpFAYps2fyA_8"
+
+# Tenta usar SERVICE_ROLE_KEY, fallback para ANON_KEY
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+if not SUPABASE_KEY:
+    # Fallback para a chave anônima (já estava funcionando antes)
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5bXJ4a3JpYXdweGlna3lrbWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzMzNTgsImV4cCI6MjA5NzMwOTM1OH0.qcA3fl1EYa_oAQCoiZFzsfcg5x5T8jjpFAYps2fyA_8"
+    print("⚠️ Usando ANON_KEY como fallback (upload pode falhar se RLS estiver ativo)")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-import os
 
-SUPABASE_URL = "https://symrxkriawpxigkykmbd.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
-
-if not SUPABASE_KEY:
-    raise ValueError("SUPABASE_SERVICE_KEY não configurada! Defina no Render.")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# ⚠️ ROTAS ESTÁTICAS PRIMEIRO — antes de /{photo_id}
 @router.get("/all", response_model=list[PhotoOut])
 async def get_all_photos(
     current_user: User = Depends(get_current_user),
@@ -44,7 +43,6 @@ async def get_all_photos(
         .order_by(Photo.created_at.desc())
     )
     return result.scalars().all()
-
 
 @router.get("/album/{album_id}", response_model=list[PhotoOut])
 async def list_album_photos(
@@ -65,7 +63,6 @@ async def list_album_photos(
     )
     return result.scalars().all()
 
-
 @router.post("/upload", response_model=PhotoOut, status_code=201)
 async def upload_photo(
     album_id: str = Form(...),
@@ -76,7 +73,6 @@ async def upload_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Verifica álbum
     result = await db.execute(
         select(Album).where(Album.id == album_id, Album.user_id == current_user.id)
     )
@@ -84,26 +80,22 @@ async def upload_photo(
     if not album:
         raise HTTPException(status_code=404, detail="Álbum não encontrado")
 
-    # Valida extensão
     file_ext = os.path.splitext(file.filename or "")[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Formato não suportado. Use: {', '.join(ALLOWED_EXTENSIONS)}")
 
-    # Valida tamanho
     content = await file.read()
     max_bytes = settings.max_file_size_mb * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(status_code=413, detail=f"Arquivo muito grande. Máximo: {settings.max_file_size_mb}MB")
 
-    # Upload para Supabase
     try:
         file_path = f"{current_user.id}/{album_id}/{uuid.uuid4()}{file_ext}"
-        upload_result = supabase.storage.from_("memorias").upload(
+        supabase.storage.from_("memorias").upload(
             file_path,
             content,
             file_options={"content-type": file.content_type or "image/jpeg"},
         )
-        # A lib supabase-py v2 levanta exceção em caso de erro — se chegou aqui, deu certo
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Falha no upload para o storage: {str(e)}")
 
@@ -132,7 +124,6 @@ async def upload_photo(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro ao salvar no banco: {str(e)}")
 
-
 @router.get("/{photo_id}", response_model=PhotoOut)
 async def get_photo(
     photo_id: str,
@@ -146,7 +137,6 @@ async def get_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Foto não encontrada")
     return photo
-
 
 @router.patch("/{photo_id}", response_model=PhotoOut)
 async def update_photo(
@@ -168,7 +158,6 @@ async def update_photo(
     await db.refresh(photo)
     return photo
 
-
 @router.delete("/{photo_id}", status_code=204)
 async def delete_photo(
     photo_id: str,
@@ -182,14 +171,12 @@ async def delete_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Foto não encontrada")
 
-    # Remove do storage (falha silenciosa)
     try:
         path = photo.url.replace(f"{SUPABASE_URL}/storage/v1/object/public/memorias/", "")
         supabase.storage.from_("memorias").remove([path])
     except Exception as e:
         print(f"Aviso: erro ao deletar do Supabase Storage: {e}")
 
-    # Atualiza álbum
     album_result = await db.execute(select(Album).where(Album.id == photo.album_id))
     album = album_result.scalar_one_or_none()
     if album:
@@ -205,7 +192,6 @@ async def delete_photo(
 
     await db.delete(photo)
     await db.commit()
-
 
 @router.post("/{photo_id}/fav")
 async def toggle_favorite(
@@ -224,3 +210,4 @@ async def toggle_favorite(
     await db.commit()
     await db.refresh(photo)
     return {"id": photo.id, "is_fav": photo.is_fav}
+EOF
