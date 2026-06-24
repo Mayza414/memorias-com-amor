@@ -37,9 +37,6 @@ async def upload_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload de uma foto para um álbum usando Supabase Storage"""
-    
-    # Verifica se o álbum existe e pertence ao usuário
     result = await db.execute(
         select(Album).where(Album.id == album_id, Album.user_id == current_user.id)
     )
@@ -47,7 +44,6 @@ async def upload_photo(
     if not album:
         raise HTTPException(status_code=404, detail="Álbum não encontrado")
     
-    # Valida tamanho do arquivo
     file_size = 0
     file.file.seek(0, 2)
     file_size = file.file.tell()
@@ -60,7 +56,6 @@ async def upload_photo(
             detail=f"Arquivo muito grande. Máximo: {settings.max_file_size_mb}MB"
         )
     
-    # Valida extensão
     allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in allowed_extensions:
@@ -70,27 +65,19 @@ async def upload_photo(
         )
     
     try:
-        # Gerar nome único para o arquivo
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = f"{current_user.id}/{album_id}/{unique_filename}"
-        
-        # Ler o conteúdo do arquivo
         content = await file.read()
         
-        # Fazer upload para o Supabase Storage
         result = supabase.storage.from_("memorias").upload(
             file_path,
             content,
             file_options={"content-type": file.content_type}
         )
-        
         if not result:
             raise Exception("Falha no upload para o Supabase")
         
-        # Gerar URL pública
         file_url = f"{SUPABASE_URL}/storage/v1/object/public/memorias/{file_path}"
-        
-        # Criar registro no banco
         photo = Photo(
             id=str(uuid.uuid4()),
             album_id=album_id,
@@ -104,20 +91,15 @@ async def upload_photo(
         
         db.add(photo)
         album.photo_count += 1
-        
-        # Se for a primeira foto, define como capa
         if album.photo_count == 1:
             album.cover_url = file_url
         
         await db.commit()
         await db.refresh(photo)
-        
         return photo
-        
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro no upload: {str(e)}")
-
 
 @router.get("/album/{album_id}", response_model=list[PhotoOut])
 async def list_album_photos(
@@ -125,9 +107,6 @@ async def list_album_photos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lista todas as fotos de um álbum"""
-    
-    # Verifica se o álbum existe
     result = await db.execute(
         select(Album).where(Album.id == album_id, Album.user_id == current_user.id)
     )
@@ -135,7 +114,6 @@ async def list_album_photos(
     if not album:
         raise HTTPException(status_code=404, detail="Álbum não encontrado")
     
-    # Busca as fotos
     result = await db.execute(
         select(Photo)
         .where(Photo.album_id == album_id)
@@ -143,15 +121,12 @@ async def list_album_photos(
     )
     return result.scalars().all()
 
-
 @router.get("/{photo_id}", response_model=PhotoOut)
 async def get_photo(
     photo_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Obtém detalhes de uma foto específica"""
-    
     result = await db.execute(
         select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
     )
@@ -159,7 +134,6 @@ async def get_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Foto não encontrada")
     return photo
-
 
 @router.patch("/{photo_id}", response_model=PhotoOut)
 async def update_photo(
@@ -168,8 +142,6 @@ async def update_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Atualiza metadados de uma foto"""
-    
     result = await db.execute(
         select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
     )
@@ -177,14 +149,11 @@ async def update_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Foto não encontrada")
     
-    # Atualiza campos
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(photo, field, value)
-    
     await db.commit()
     await db.refresh(photo)
     return photo
-
 
 @router.delete("/{photo_id}", status_code=204)
 async def delete_photo(
@@ -192,8 +161,6 @@ async def delete_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Deleta uma foto (do Supabase e do banco)"""
-    
     result = await db.execute(
         select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
     )
@@ -201,23 +168,18 @@ async def delete_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Foto não encontrada")
     
-    # Deleta do Supabase Storage
     try:
-        # Extrair o caminho da URL
         path = photo.url.replace(f"{SUPABASE_URL}/storage/v1/object/public/memorias/", "")
         supabase.storage.from_("memorias").remove([path])
     except Exception as e:
         print(f"Erro ao deletar do Supabase: {e}")
     
-    # Atualiza contagem no álbum
     album_result = await db.execute(
         select(Album).where(Album.id == photo.album_id)
     )
     album = album_result.scalar_one_or_none()
     if album:
         album.photo_count = max(0, album.photo_count - 1)
-        
-        # Se a foto deletada era a capa, atualiza
         if album.cover_url == photo.url and album.photo_count > 0:
             first_photo_result = await db.execute(
                 select(Photo).where(Photo.album_id == album.id).limit(1)
@@ -228,15 +190,12 @@ async def delete_photo(
     await db.delete(photo)
     await db.commit()
 
-
 @router.post("/{photo_id}/fav")
 async def toggle_favorite(
     photo_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Alterna o status de favorito de uma foto"""
-    
     result = await db.execute(
         select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
     )
@@ -247,20 +206,16 @@ async def toggle_favorite(
     photo.is_fav = not photo.is_fav
     await db.commit()
     await db.refresh(photo)
-    
     return {"id": photo.id, "is_fav": photo.is_fav}
-
 
 @router.get("/all", response_model=list[PhotoOut])
 async def get_all_photos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retorna todas as fotos do usuário"""
     result = await db.execute(
         select(Photo)
         .where(Photo.user_id == current_user.id)
         .order_by(Photo.created_at.desc())
     )
     return result.scalars().all()
-EOF
