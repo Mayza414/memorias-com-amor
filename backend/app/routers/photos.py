@@ -1,7 +1,3 @@
-# No WSL, na pasta backend
-cd /mnt/c/Users/mayza/memorias-com-amor/backend
-
-# Substitua todo o conteúdo do arquivo
 cat > app/routers/photos.py << 'EOF'
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
