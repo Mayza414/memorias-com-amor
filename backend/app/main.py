@@ -24,6 +24,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.include_router(auth.router)
+app.include_router(albums.router)
+app.include_router(photos.router)
+
 # CORS - Configuração explícita
 app.add_middleware(
     CORSMiddleware,
