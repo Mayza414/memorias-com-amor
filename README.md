@@ -34,3 +34,4 @@ cd memorias-com-amor
 docker-compose up -d
 cd frontend
 python3 -m http.server 3000
+ 
