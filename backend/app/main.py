@@ -1,8 +1,3 @@
-# No WSL, na pasta backend
-cd /mnt/c/Users/mayza/memorias-com-amor/backend
-
-# Substitua todo o conteúdo do main.py
-cat > app/main.py << 'EOF'
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -53,7 +48,6 @@ app.add_middleware(
 async def health():
     return {"status": "ok"}
 
-# Rota para HEAD (para o UptimeRobot)
 @app.head("/api/health")
 async def health_head():
     return {"status": "ok"}
@@ -61,4 +55,3 @@ async def health_head():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-EOF
