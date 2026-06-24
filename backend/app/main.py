@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.routers import auth, albums, photos
+from app.routers import auth, albums, photos, profile
 
 settings = get_settings()
 
@@ -27,6 +27,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(albums.router)
 app.include_router(photos.router)
+app.include_router(profile.router)
 
 # CORS - Configuração explícita
 app.add_middleware(
