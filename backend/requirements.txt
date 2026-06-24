@@ -11,3 +11,4 @@ pillow==10.3.0
 pydantic[email]==2.7.1
 pydantic-settings==2.2.1
 psycopg2-binary==2.9.9
+supabase==2.5.1
