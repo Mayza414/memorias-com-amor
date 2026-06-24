@@ -16,9 +16,9 @@ async def lifespan(app: FastAPI):
         # Cria as tabelas se não existirem
         await conn.run_sync(Base.metadata.create_all)
         
-        # Adiciona as colunas bio e profile_pic se não existirem
+        # Adiciona as colunas que faltam
         try:
-            # Verifica se a coluna bio existe
+            # Verifica e adiciona bio
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='bio'"
             ))
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
                 print("✅ Coluna bio adicionada!")
             
-            # Verifica se a coluna profile_pic existe
+            # Verifica e adiciona profile_pic
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='profile_pic'"
             ))
@@ -35,6 +35,16 @@ async def lifespan(app: FastAPI):
                 print("🔧 Adicionando coluna profile_pic...")
                 await conn.execute(text("ALTER TABLE users ADD COLUMN profile_pic VARCHAR(500)"))
                 print("✅ Coluna profile_pic adicionada!")
+            
+            # Verifica e adiciona updated_at
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='updated_at'"
+            ))
+            if not result.fetchone():
+                print("🔧 Adicionando coluna updated_at...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
+                print("✅ Coluna updated_at adicionada!")
+                
         except Exception as e:
             print(f"⚠️ Erro ao adicionar colunas: {e}")
     
