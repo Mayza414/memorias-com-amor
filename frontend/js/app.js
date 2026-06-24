@@ -1,5 +1,5 @@
 /* =====================================================
-   MEMÓRIAS COM AMOR — app.js (VERSÃO FUNCIONAL)
+   MEMÓRIAS COM AMOR — app.js (VERSÃO COMPLETA COM PERFIL)
    ===================================================== */
 
 const API_URL = 'https://memorias-com-amor.onrender.com/api';
@@ -275,7 +275,7 @@ const App = {
       el.classList.add('active');
     }
 
-    const navMap = { albums: 0, favorites: 1, timeline: 2 };
+    const navMap = { albums: 0, favorites: 1, timeline: 2, profile: 3 };
     const navItems = document.querySelectorAll('.nav-item');
     if (navMap[view] !== undefined) {
       const ni = navItems[navMap[view]];
@@ -285,6 +285,7 @@ const App = {
     if (view === 'albums') this.loadAlbums();
     if (view === 'favorites') this.loadFavorites();
     if (view === 'timeline') this.loadTimeline();
+    if (view === 'profile') this.loadProfile();
 
     this.closeSidebar();
   },
@@ -299,6 +300,7 @@ const App = {
     if (sidebar) sidebar.classList.remove('open');
   },
 
+  // ========== ÁLBUNS ==========
   async loadAlbums() {
     const grid = document.getElementById('albums-grid');
     const empty = document.getElementById('albums-empty');
@@ -461,6 +463,7 @@ const App = {
     }
   },
 
+  // ========== FOTOS ==========
   renderPhotoGrid(gridId, emptyId, photos) {
     const grid = document.getElementById(gridId);
     const empty = document.getElementById(emptyId);
@@ -500,6 +503,7 @@ const App = {
     }
   },
 
+  // ========== FAVORITOS ==========
   async loadFavorites() {
     const grid = document.getElementById('favorites-grid');
     const empty = document.getElementById('favorites-empty');
@@ -550,6 +554,7 @@ const App = {
     this.showLightbox();
   },
 
+  // ========== TIMELINE ==========
   async loadTimeline() {
     const container = document.getElementById('timeline-content');
     if (!container) return;
@@ -603,6 +608,150 @@ const App = {
     }
   },
 
+  // ========== PERFIL ==========
+  async loadProfile() {
+    try {
+      const token = localStorage.getItem('mca_session');
+      if (!token) {
+        this.toast('Faça login primeiro', 'error');
+        return;
+      }
+
+      const session = JSON.parse(token);
+      const accessToken = session.token;
+
+      const response = await fetch(`${API_URL}/profile/me`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.toast('Sessão expirada, faça login novamente', 'error');
+          this.logout();
+        }
+        throw new Error('Erro ao carregar perfil');
+      }
+
+      const data = await response.json();
+
+      document.getElementById('profile-name').textContent = data.name || 'Usuário';
+      document.getElementById('profile-email').textContent = data.email || '';
+      document.getElementById('profile-bio').textContent = data.bio || 'Sem bio ainda...';
+      document.getElementById('stat-albums').textContent = data.albums_count || 0;
+      document.getElementById('stat-photos').textContent = data.photos_count || 0;
+      document.getElementById('stat-favorites').textContent = data.favorites_count || 0;
+
+      if (data.profile_pic) {
+        document.getElementById('profile-img').src = data.profile_pic;
+      } else {
+        document.getElementById('profile-img').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">👤</text></svg>';
+      }
+    } catch (error) {
+      console.error('Erro ao carregar perfil:', error);
+      this.toast('Erro ao carregar perfil', 'error');
+    }
+  },
+
+  editProfile() {
+    const name = document.getElementById('profile-name').textContent;
+    const bio = document.getElementById('profile-bio').textContent;
+
+    document.getElementById('edit-name').value = name === 'Usuário' ? '' : name;
+    document.getElementById('edit-bio').value = bio === 'Sem bio ainda...' ? '' : bio;
+
+    this.openModal('modal-edit-profile');
+  },
+
+  async saveProfile() {
+    const name = document.getElementById('edit-name').value.trim();
+    const bio = document.getElementById('edit-bio').value.trim();
+
+    try {
+      const token = localStorage.getItem('mca_session');
+      if (!token) {
+        this.toast('Faça login primeiro', 'error');
+        return;
+      }
+
+      const session = JSON.parse(token);
+      const accessToken = session.token;
+
+      const response = await fetch(`${API_URL}/profile/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ name, bio })
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.toast('Sessão expirada', 'error');
+          this.logout();
+        }
+        throw new Error('Erro ao atualizar perfil');
+      }
+
+      this.closeModalById('modal-edit-profile');
+      this.toast('Perfil atualizado! ✅', 'success');
+      await this.loadProfile();
+    } catch (error) {
+      console.error('Erro ao salvar perfil:', error);
+      this.toast('Erro ao atualizar perfil', 'error');
+    }
+  },
+
+  async uploadProfilePic(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      this.toast('Imagem muito grande (máx 5MB)', 'error');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.toast('Formato não suportado', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const token = localStorage.getItem('mca_session');
+      if (!token) {
+        this.toast('Faça login primeiro', 'error');
+        return;
+      }
+
+      const session = JSON.parse(token);
+      const accessToken = session.token;
+
+      const response = await fetch(`${API_URL}/profile/upload-pic`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        body: formData
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.toast('Sessão expirada', 'error');
+          this.logout();
+        }
+        throw new Error('Erro no upload');
+      }
+
+      this.toast('Foto atualizada! 📸', 'success');
+      await this.loadProfile();
+    } catch (error) {
+      console.error('Erro ao enviar foto:', error);
+      this.toast('Erro ao atualizar foto', 'error');
+    }
+  },
+
+  // ========== UPLOAD ==========
   openUpload() {
     this.pendingFiles = [];
     document.getElementById('preview-grid').innerHTML = '';
@@ -706,6 +855,7 @@ const App = {
     }
   },
 
+  // ========== SHARE ==========
   shareAlbum() {
     document.getElementById('share-link').value = window.location.href;
     this.openModal('modal-share');
@@ -718,6 +868,7 @@ const App = {
     this.toast('Link copiado! ✓', 'success');
   },
 
+  // ========== LIGHTBOX ==========
   openLightbox(index) {
     this.lightbox = { photos: this.currentPhotos, index };
     this.showLightbox();
@@ -795,6 +946,7 @@ const App = {
     }
   },
 
+  // ========== MODAIS ==========
   openModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -813,6 +965,7 @@ const App = {
     if (e.target.id === id) this.closeModalById(id);
   },
 
+  // ========== TOAST ==========
   toast(msg, type = '') {
     const el = document.getElementById('toast');
     if (!el) return;
@@ -827,6 +980,7 @@ const App = {
     }, 3000);
   },
 
+  // ========== HELPERS ==========
   getInitials(name) {
     if (!name) return '?';
     return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();

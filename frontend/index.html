@@ -10,13 +10,13 @@
     href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="./css/style.css" />
-  <link rel="apple-touch-icon" sizes="180x180" href="./img/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="./img/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="./img/favicon-16x16.png">
-<link rel="manifest" href="./img/site.webmanifest">
-<link rel="shortcut icon" href="./img/favicon.ico">
-<meta name="msapplication-TileColor" content="#D4537E">
-<meta name="theme-color" content="#FFFFFF">
+  <link rel="apple-touch-icon" sizes="180x180" href="./img/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./img/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./img/favicon-16x16.png" />
+  <link rel="manifest" href="./img/site.webmanifest" />
+  <link rel="shortcut icon" href="./img/favicon.ico" />
+  <meta name="msapplication-TileColor" content="#D4537E" />
+  <meta name="theme-color" content="#FFFFFF" />
 </head>
 
 <body>
@@ -110,6 +110,14 @@
             <line x1="3" y1="10" x2="21" y2="10" />
           </svg>
           Linha do tempo
+        </a>
+        <!-- NOVO: Link para o Perfil -->
+        <a class="nav-item" onclick="App.navigate('profile')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          Meu Perfil
         </a>
       </nav>
       <div class="sidebar-footer">
@@ -234,6 +242,59 @@
         </div>
       </div>
 
+      <!-- ===== NOVA VIEW: PERFIL ===== -->
+      <div id="view-profile" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h1>Meu Perfil</h1>
+            <p class="view-sub">Gerencie suas informações pessoais</p>
+          </div>
+          <button class="btn-primary btn-sm" onclick="App.editProfile()">
+            ✏️ Editar perfil
+          </button>
+        </div>
+
+        <div class="profile-container">
+          <div class="profile-card">
+            <!-- Foto de perfil -->
+            <div class="profile-pic-wrapper">
+              <div class="profile-pic" id="profile-pic">
+                <img id="profile-img" src="" alt="Foto de perfil" />
+                <button class="profile-pic-upload" onclick="document.getElementById('profile-pic-input').click()">
+                  📷
+                </button>
+                <input type="file" id="profile-pic-input" accept="image/*" style="display:none"
+                  onchange="App.uploadProfilePic(event)" />
+              </div>
+            </div>
+
+            <!-- Informações -->
+            <div class="profile-info">
+              <h2 id="profile-name">Carregando...</h2>
+              <p id="profile-email" class="profile-email">email@email.com</p>
+              <p id="profile-bio" class="profile-bio">Sem bio ainda...</p>
+
+              <!-- Estatísticas -->
+              <div class="profile-stats">
+                <div class="stat-item">
+                  <span class="stat-number" id="stat-albums">0</span>
+                  <span class="stat-label">Álbuns</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-number" id="stat-photos">0</span>
+                  <span class="stat-label">Fotos</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-number" id="stat-favorites">0</span>
+                  <span class="stat-label">Favoritos</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- ===== FIM DA VIEW PERFIL ===== -->
+
     </main>
   </div>
 
@@ -318,6 +379,28 @@
         <button class="btn-copy" onclick="App.copyLink()">Copiar</button>
       </div>
       <p class="share-note">Apenas pessoas com o link podem ver este álbum.</p>
+    </div>
+  </div>
+
+  <!-- Edit Profile Modal -->
+  <div id="modal-edit-profile" class="modal-overlay hidden" onclick="App.closeModal('modal-edit-profile', event)">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>Editar Perfil</h3>
+        <button class="modal-close" onclick="App.closeModalById('modal-edit-profile')">×</button>
+      </div>
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="edit-name" placeholder="Seu nome" maxlength="60" />
+      </div>
+      <div class="form-group">
+        <label>Bio</label>
+        <textarea id="edit-bio" placeholder="Conte um pouco sobre você..." rows="3" maxlength="200"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="App.closeModalById('modal-edit-profile')">Cancelar</button>
+        <button class="btn-primary" onclick="App.saveProfile()">Salvar</button>
+      </div>
     </div>
   </div>
 
