@@ -1,0 +1,234 @@
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import Optional
+import uuid
+import os
+import shutil
+from datetime import date
+from PIL import Image
+
+
+
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.core.config import get_settings
+from app.models.user import User
+from app.models.album import Album
+from app.models.photo import Photo
+from app.schemas.albums import PhotoOut, PhotoUpdate
+
+router = APIRouter(prefix="/api/photos", tags=["photos"])
+settings = get_settings()
+
+os.makedirs(settings.upload_dir, exist_ok=True)
+
+
+async def save_upload_file(upload_file: UploadFile, user_id: str, album_id: str) -> str:
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    file_ext = os.path.splitext(upload_file.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Formato não suportado. Use: {', '.join(allowed_extensions)}"
+        )
+    
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    user_folder = os.path.join(settings.upload_dir, user_id)
+    album_folder = os.path.join(user_folder, album_id)
+    os.makedirs(album_folder, exist_ok=True)
+    
+    file_path = os.path.join(album_folder, unique_filename)
+    relative_path = os.path.join(user_id, album_id, unique_filename)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(upload_file.file, buffer)
+        
+        with Image.open(file_path) as img:
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            max_size = 1920
+            if max(img.size) > max_size:
+                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                img.save(file_path, quality=85, optimize=True)
+            else:
+                img.save(file_path, quality=85, optimize=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo: {str(e)}")
+    
+    return relative_path
+
+
+@router.post("/upload", response_model=PhotoOut, status_code=201)
+async def upload_photo(
+    album_id: str = Form(...),
+    caption: Optional[str] = Form(None),
+    photo_date: Optional[date] = Form(None),
+    is_fav: bool = Form(False),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Album).where(Album.id == album_id, Album.user_id == current_user.id)
+    )
+    album = result.scalar_one_or_none()
+    if not album:
+        raise HTTPException(status_code=404, detail="Álbum não encontrado")
+    
+    file_size = 0
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    
+    max_size_bytes = settings.max_file_size_mb * 1024 * 1024
+    if file_size > max_size_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Arquivo muito grande. Máximo: {settings.max_file_size_mb}MB"
+        )
+    
+    try:
+        relative_path = await save_upload_file(file, current_user.id, album_id)
+        file_url = f"/uploads/{relative_path}"
+        
+        photo = Photo(
+            id=str(uuid.uuid4()),
+            album_id=album_id,
+            user_id=current_user.id,
+            filename=file.filename,
+            url=file_url,
+            caption=caption,
+            is_fav=is_fav,
+            photo_date=photo_date,
+        )
+        
+        db.add(photo)
+        album.photo_count += 1
+        if album.photo_count == 1:
+            album.cover_url = file_url
+        
+        await db.commit()
+        await db.refresh(photo)
+        return photo
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro no upload: {str(e)}")
+
+
+@router.get("/album/{album_id}", response_model=list[PhotoOut])
+async def list_album_photos(
+    album_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Album).where(Album.id == album_id, Album.user_id == current_user.id)
+    )
+    album = result.scalar_one_or_none()
+    if not album:
+        raise HTTPException(status_code=404, detail="Álbum não encontrado")
+    
+    result = await db.execute(
+        select(Photo)
+        .where(Photo.album_id == album_id)
+        .order_by(Photo.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/{photo_id}", response_model=PhotoOut)
+async def get_photo(
+    photo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
+    )
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto não encontrada")
+    return photo
+
+
+@router.patch("/{photo_id}", response_model=PhotoOut)
+async def update_photo(
+    photo_id: str,
+    body: PhotoUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
+    )
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto não encontrada")
+    
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(photo, field, value)
+    
+    await db.commit()
+    await db.refresh(photo)
+    return photo
+
+
+@router.delete("/{photo_id}", status_code=204)
+async def delete_photo(
+    photo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
+    )
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto não encontrada")
+    
+    try:
+        file_path = os.path.join(settings.upload_dir, photo.url.replace("/uploads/", ""))
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        dir_path = os.path.dirname(file_path)
+        if os.path.exists(dir_path) and not os.listdir(dir_path):
+            os.rmdir(dir_path)
+    except Exception as e:
+        print(f"Erro ao deletar arquivo: {e}")
+    
+    album_result = await db.execute(
+        select(Album).where(Album.id == photo.album_id)
+    )
+    album = album_result.scalar_one_or_none()
+    if album:
+        album.photo_count = max(0, album.photo_count - 1)
+        if album.cover_url == photo.url and album.photo_count > 0:
+            first_photo_result = await db.execute(
+                select(Photo).where(Photo.album_id == album.id).limit(1)
+            )
+            first_photo = first_photo_result.scalar_one_or_none()
+            album.cover_url = first_photo.url if first_photo else None
+    
+    await db.delete(photo)
+    await db.commit()
+
+
+@router.post("/{photo_id}/fav")
+async def toggle_favorite(
+    photo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == current_user.id)
+    )
+    photo = result.scalar_one_or_none()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto não encontrada")
+    
+    photo.is_fav = not photo.is_fav
+    await db.commit()
+    await db.refresh(photo)
+    return {"id": photo.id, "is_fav": photo.is_fav}
