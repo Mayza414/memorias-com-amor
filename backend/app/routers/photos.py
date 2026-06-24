@@ -1,8 +1,3 @@
-# No WSL
-cd /mnt/c/Users/mayza/memorias-com-amor/backend
-
-# Substituir o arquivo
-cat > app/routers/photos.py << 'EOF'
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -142,4 +137,3 @@ async def toggle_favorite(photo_id: str, current_user: User = Depends(get_curren
     await db.commit()
     await db.refresh(photo)
     return {"id": photo.id, "is_fav": photo.is_fav}
-EOF
