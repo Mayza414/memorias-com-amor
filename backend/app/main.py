@@ -10,19 +10,37 @@ from app.routers import auth, albums, photos, profile
 
 settings = get_settings()
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
+        # Cria as tabelas se não existirem
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Adiciona as colunas bio e profile_pic se não existirem
+        try:
+            # Verifica se a coluna bio existe
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='bio'"
+            ))
+            if not result.fetchone():
+                print("🔧 Adicionando coluna bio...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
+                print("✅ Coluna bio adicionada!")
+            
+            # Verifica se a coluna profile_pic existe
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='profile_pic'"
+            ))
+            if not result.fetchone():
+                print("🔧 Adicionando coluna profile_pic...")
+                await conn.execute(text("ALTER TABLE users ADD COLUMN profile_pic VARCHAR(500)"))
+                print("✅ Coluna profile_pic adicionada!")
+        except Exception as e:
+            print(f"⚠️ Erro ao adicionar colunas: {e}")
+    
     yield
-
-app = FastAPI(
-    title="Memórias com Amor — API",
-    version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    lifespan=lifespan
-)
 
 app.include_router(auth.router)
 app.include_router(albums.router)
