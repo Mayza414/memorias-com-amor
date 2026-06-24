@@ -1,3 +1,8 @@
+# No WSL
+cd /mnt/c/Users/mayza/memorias-com-amor/backend
+
+# Substituir o arquivo
+cat > app/routers/photos.py << 'EOF'
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -35,8 +40,8 @@ async def get_all_photos(current_user: User = Depends(get_current_user), db: Asy
 
 @router.get("/album/{album_id}", response_model=list[PhotoOut])
 async def list_album_photos(album_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    album = await db.execute(select(Album).where(Album.id == album_id, Album.user_id == current_user.id))
-    if not album.scalar_one_or_none():
+    result = await db.execute(select(Album).where(Album.id == album_id, Album.user_id == current_user.id))
+    if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Álbum não encontrado")
     result = await db.execute(select(Photo).where(Photo.album_id == album_id).order_by(Photo.created_at.desc()))
     return result.scalars().all()
@@ -51,8 +56,8 @@ async def upload_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    album = await db.execute(select(Album).where(Album.id == album_id, Album.user_id == current_user.id))
-    album = album.scalar_one_or_none()
+    result = await db.execute(select(Album).where(Album.id == album_id, Album.user_id == current_user.id))
+    album = result.scalar_one_or_none()
     if not album:
         raise HTTPException(status_code=404, detail="Álbum não encontrado")
 
@@ -137,3 +142,4 @@ async def toggle_favorite(photo_id: str, current_user: User = Depends(get_curren
     await db.commit()
     await db.refresh(photo)
     return {"id": photo.id, "is_fav": photo.is_fav}
+EOF
