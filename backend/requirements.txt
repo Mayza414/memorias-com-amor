@@ -13,3 +13,4 @@ pydantic-settings==2.2.1
 psycopg2-binary==2.9.9
 supabase==2.5.1
 supabase==2.5.1
+cloudinary==1.36.0
