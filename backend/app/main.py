@@ -24,38 +24,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - Configuração específica para 127.0.0.1:3000
+# CORS - Configuração explícita
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://127.0.0.1:3000",
+        "https://memorias-com-amor-frontend.vercel.app",
+        "https://memorias-com-amor-app.vercel.app",
         "http://localhost:3000",
-        "http://localhost",
-        "http://127.0.0.1",
-        "http://172.24.208.1:3000",
-        "http://172.24.208.1",
+        "http://localhost"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
-
-os.makedirs(settings.upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
-
-app.include_router(auth.router)
-app.include_router(albums.router)
-app.include_router(photos.router)
-
-@app.get("/api/health")
-async def health():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-@app.head("/api/health")
-async def health_head():
-    return {"status": "ok"}
