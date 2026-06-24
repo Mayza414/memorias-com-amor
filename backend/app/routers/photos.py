@@ -22,7 +22,15 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+import os
 
+SUPABASE_URL = "https://symrxkriawpxigkykmbd.supabase.co"
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
+if not SUPABASE_KEY:
+    raise ValueError("SUPABASE_SERVICE_KEY não configurada! Defina no Render.")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ⚠️ ROTAS ESTÁTICAS PRIMEIRO — antes de /{photo_id}
 @router.get("/all", response_model=list[PhotoOut])
