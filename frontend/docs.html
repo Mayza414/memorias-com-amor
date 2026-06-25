@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Documentação - Memórias com Amor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .docs-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .docs-container h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.5rem;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+    }
+    .docs-container .subtitle {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+    }
+    .docs-section {
+      background: white;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    .docs-section h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.3rem;
+      color: var(--text-primary);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .docs-section p {
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 0.75rem;
+    }
+    .docs-section ul, .docs-section ol {
+      padding-left: 1.5rem;
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+    .docs-section li {
+      margin-bottom: 0.3rem;
+    }
+    .docs-section code {
+      background: var(--cream-mid);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--pink-dark);
+    }
+    .docs-section a {
+      color: var(--pink-main);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .docs-section a:hover {
+      text-decoration: underline;
+    }
+    .docs-section .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+      margin-left: 8px;
+    }
+    .badge-green { background: #d4edda; color: #155724; }
+    .badge-blue { background: #d1ecf1; color: #0c5460; }
+    .badge-yellow { background: #fff3cd; color: #856404; }
+    .badge-red { background: #f8d7da; color: #721c24; }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+      margin: 0.75rem 0;
+    }
+    .docs-grid .link-card {
+      background: var(--cream);
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+    .docs-grid .link-card:hover {
+      border-color: var(--pink-main);
+    }
+    .docs-grid .link-card a {
+      font-weight: 500;
+      display: block;
+    }
+    .docs-grid .link-card small {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+    .btn-docs-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .btn-docs-back:hover {
+      color: var(--text-primary);
+    }
+    @media (max-width: 600px) {
+      .docs-container { padding: 1rem; }
+      .docs-container h1 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="docs-container">
+    <a href="/" class="btn-docs-back">← Voltar para o site</a>
+    
+    <h1>📸 Memórias com Amor</h1>
+    <p class="subtitle">Documentação completa do projeto</p>
+
+    <!-- Sobre -->
+    <div class="docs-section">
+      <h2>📖 Sobre o projeto</h2>
+      <p>
+        <strong>Memórias com Amor</strong> é uma aplicação web para guardar e organizar memórias especiais 
+        com fotos e álbuns personalizados. O projeto foi desenvolvido com foco em simplicidade, beleza e 
+        facilidade de uso.
+      </p>
+      <p>
+        <span class="badge badge-green">Status: Em produção</span>
+        <span class="badge badge-blue">Versão 2.0.0</span>
+      </p>
+    </div>
+
+    <!-- Links Rápidos -->
+    <div class="docs-section">
+      <h2>🔗 Links rápidos</h2>
+      <div class="docs-grid">
+        <div class="link-card">
+          <a href="https://memorias-com-amor-frontend.vercel.app" target="_blank">🌐 Acessar o site</a>
+          <small>Frontend principal</small>
+        </div>
+        <div class="link-card">
+          <a href="https://memorias-com-amor.onrender.com/api/docs" target="_blank">📚 Swagger UI</a>
+          <small>Documentação interativa da API</small>
+        </div>
+        <div class="link-card">
+          <a href="https://memorias-com-amor.onrender.com/api/redoc" target="_blank">📖 ReDoc</a>
+          <small>Documentação alternativa da API</small>
+        </div>
+        <div class="link-card">
+          <a href="https://github.com/Mayza414/memorias-com-amor" target="_blank">🐙 GitHub</a>
+          <small>Código-fonte do projeto</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tecnologias -->
+    <div class="docs-section">
+      <h2>🛠️ Tecnologias utilizadas</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+        <span class="badge" style="background:#E8F0FE;color:#1a73e8;">FastAPI</span>
+        <span class="badge" style="background:#E8F5E9;color:#2e7d32;">PostgreSQL</span>
+        <span class="badge" style="background:#E3F2FD;color:#0d47a1;">SQLAlchemy</span>
+        <span class="badge" style="background:#FFF3E0;color:#e65100;">JWT</span>
+        <span class="badge" style="background:#FCE4EC;color:#880e4f;">Docker</span>
+        <span class="badge" style="background:#F3E5F5;color:#4a148c;">Cloudinary</span>
+        <span class="badge" style="background:#E0F7FA;color:#00695c;">HTML5</span>
+        <span class="badge" style="background:#FFF8E1;color:#f57f17;">CSS3</span>
+        <span class="badge" style="background:#FFF3E0;color:#e65100;">JavaScript</span>
+        <span class="badge" style="background:#E8F5E9;color:#1b5e20;">Vercel</span>
+        <span class="badge" style="background:#E3F2FD;color:#0d47a1;">Render</span>
+      </div>
+    </div>
+
+    <!-- Funcionalidades -->
+    <div class="docs-section">
+      <h2>✨ Funcionalidades</h2>
+      <ul>
+        <li><strong>🔐 Autenticação</strong> — Registro e login com JWT (tokens de acesso e refresh)</li>
+        <li><strong>📚 Álbuns</strong> — Crie, edite e delete álbuns com categorias (Amor, Viagem, Aniversário, etc.)</li>
+        <li><strong>📸 Fotos</strong> — Upload de imagens com otimização automática (Cloudinary)</li>
+        <li><strong>❤️ Favoritos</strong> — Marque suas fotos preferidas</li>
+        <li><strong>📅 Linha do Tempo</strong> — Visualize todas as fotos organizadas por data</li>
+        <li><strong>👤 Perfil</strong> — Edite nome, bio e foto de perfil</li>
+        <li><strong>📱 Responsivo</strong> — Funciona em desktop, tablet e mobile</li>
+        <li><strong>🔒 Segurança</strong> — Rate limiting, headers de segurança e validação de senha</li>
+      </ul>
+    </div>
+
+    <!-- Rotas da API -->
+    <div class="docs-section">
+      <h2>📡 Rotas da API</h2>
+      <p>Todos os endpoints estão disponíveis em: <code>https://memorias-com-amor.onrender.com/api</code></p>
+
+      <p><strong>🔐 Autenticação</strong></p>
+      <ul>
+        <li><code>POST /auth/register</code> — Registrar novo usuário <span class="badge badge-green">5/min</span></li>
+        <li><code>POST /auth/login</code> — Login <span class="badge badge-green">10/min</span></li>
+        <li><code>POST /auth/refresh</code> — Renovar token de acesso</li>
+        <li><code>GET /auth/me</code> — Dados do usuário logado</li>
+      </ul>
+
+      <p><strong>📚 Álbuns</strong></p>
+      <ul>
+        <li><code>GET /albums</code> — Listar todos os álbuns</li>
+        <li><code>POST /albums</code> — Criar um novo álbum</li>
+        <li><code>GET /albums/{id}</code> — Buscar um álbum</li>
+        <li><code>PATCH /albums/{id}</code> — Atualizar um álbum</li>
+        <li><code>DELETE /albums/{id}</code> — Deletar um álbum</li>
+      </ul>
+
+      <p><strong>📸 Fotos</strong></p>
+      <ul>
+        <li><code>POST /photos/upload</code> — Upload de uma foto</li>
+        <li><code>GET /photos/album/{id}</code> — Listar fotos de um álbum</li>
+        <li><code>GET /photos/all</code> — Listar todas as fotos do usuário</li>
+        <li><code>GET /photos/{id}</code> — Buscar uma foto</li>
+        <li><code>PATCH /photos/{id}</code> — Atualizar metadados da foto</li>
+        <li><code>DELETE /photos/{id}</code> — Deletar uma foto</li>
+        <li><code>POST /photos/{id}/fav</code> — Favoritar/desfavoritar</li>
+      </ul>
+
+      <p><strong>👤 Perfil</strong></p>
+      <ul>
+        <li><code>GET /profile/me</code> — Obter perfil do usuário</li>
+        <li><code>PATCH /profile/me</code> — Atualizar perfil (nome, bio)</li>
+        <li><code>POST /profile/upload-pic</code> — Upload de foto de perfil</li>
+      </ul>
+
+      <p><strong>📊 Saúde</strong></p>
+      <ul>
+        <li><code>GET /health</code> — Verificar status da API</li>
+      </ul>
+    </div>
+
+    <!-- URLs -->
+    <div class="docs-section">
+      <h2>🌐 URLs do projeto</h2>
+      <ul>
+        <li><strong>Frontend:</strong> <a href="https://memorias-com-amor-frontend.vercel.app" target="_blank">https://memorias-com-amor-frontend.vercel.app</a></li>
+        <li><strong>Backend (API):</strong> <a href="https://memorias-com-amor.onrender.com" target="_blank">https://memorias-com-amor.onrender.com</a></li>
+        <li><strong>Swagger UI:</strong> <a href="https://memorias-com-amor.onrender.com/api/docs" target="_blank">https://memorias-com-amor.onrender.com/api/docs</a></li>
+        <li><strong>ReDoc:</strong> <a href="https://memorias-com-amor.onrender.com/api/redoc" target="_blank">https://memorias-com-amor.onrender.com/api/redoc</a></li>
+        <li><strong>GitHub:</strong> <a href="https://github.com/Mayza414/memorias-com-amor" target="_blank">https://github.com/Mayza414/memorias-com-amor</a></li>
+      </ul>
+    </div>
+
+    <!-- Como usar -->
+    <div class="docs-section">
+      <h2>🚀 Como usar</h2>
+      <ol>
+        <li><strong>Registre uma conta</strong> — Clique em "Criar conta" no frontend</li>
+        <li><strong>Faça login</strong> — Entre com seu e-mail e senha</li>
+        <li><strong>Crie um álbum</strong> — Clique em "Novo álbum" e preencha os dados</li>
+        <li><strong>Adicione fotos</strong> — Dentro do álbum, clique no botão de upload</li>
+        <li><strong>Explore</strong> — Favoritos, linha do tempo e perfil</li>
+      </ol>
+    </div>
+
+    <!-- Licença -->
+    <div class="docs-section">
+      <h2>📄 Licença</h2>
+      <p>Este projeto está sob a licença <strong>MIT</strong>. Veja o arquivo <code>LICENSE</code> no repositório para mais detalhes.</p>
+    </div>
+
+    <!-- Rodapé -->
+    <div style="text-align:center;padding:2rem 0 0.5rem;color:var(--text-muted);font-size:0.85rem;border-top:1px solid var(--border);margin-top:1rem;">
+      Feito com ❤️ por Mayza Silva · © 2026
+    </div>
+  </div>
+
+</body>
+</html>
