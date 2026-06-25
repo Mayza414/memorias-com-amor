@@ -14,3 +14,4 @@ psycopg2-binary==2.9.9
 supabase==2.5.1
 supabase==2.5.1
 cloudinary==1.36.0
+slowapi==0.1.9
