@@ -99,6 +99,7 @@ const App = {
         id: this.user.id,
         email: this.user.email,
         name: this.user.name,
+        token: this.user.token,        // ← ADICIONADO
         refreshToken: this.user.refreshToken,
       }));
     } catch { }
@@ -108,18 +109,16 @@ const App = {
     try { localStorage.removeItem('mca_session'); } catch { }
   },
 
-  async restoreSession() {
+  saveSession() {
     try {
-      const saved = JSON.parse(localStorage.getItem('mca_session') || 'null');
-      if (!saved?.refreshToken) return false;
-      const tokens = await Auth.refresh(saved.refreshToken);
-      this.user = { ...saved, token: tokens.access_token, refreshToken: tokens.refresh_token };
-      this.saveSession();
-      return true;
-    } catch {
-      this.clearSession();
-      return false;
-    }
+      localStorage.setItem('mca_session', JSON.stringify({
+        id: this.user.id,
+        email: this.user.email,
+        name: this.user.name,
+        token: this.user.token,        // ← ADICIONE ESTA LINHA
+        refreshToken: this.user.refreshToken,
+      }));
+    } catch { }
   },
 
   async login() {
@@ -191,7 +190,7 @@ const App = {
       this.user = {
         id: auth.user.id,
         email: auth.user.email,
-        name: name,
+        name: auth.user.name,
         token: auth.access_token,
         refreshToken: auth.refresh_token,
       };
@@ -304,7 +303,6 @@ const App = {
   async loadAlbums() {
     const grid = document.getElementById('albums-grid');
     const empty = document.getElementById('albums-empty');
-    const count = document.getElementById('albums-count');
 
     if (empty) empty.classList.add('hidden');
     if (grid) grid.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;grid-column:1/-1">Carregando...</div>';
@@ -611,29 +609,28 @@ const App = {
   // ========== PERFIL ==========
   async loadProfile() {
     try {
-      const token = localStorage.getItem('mca_session');
-      if (!token) {
-        this.toast('Faça login primeiro', 'error');
+      if (!this.user?.token) {
+        this.logout();
         return;
       }
 
-      const session = JSON.parse(token);
-      const accessToken = session.token;
-
       const response = await fetch(`${API_URL}/profile/me`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+        headers: {
+          'Authorization': `Bearer ${this.user.token}`,
+          'Content-Type': 'application/json',
+        }
       });
 
       if (!response.ok) {
         if (response.status === 401) {
           this.toast('Sessão expirada, faça login novamente', 'error');
           this.logout();
+          return;
         }
         throw new Error('Erro ao carregar perfil');
       }
 
       const data = await response.json();
-
       document.getElementById('profile-name').textContent = data.name || 'Usuário';
       document.getElementById('profile-email').textContent = data.email || '';
       document.getElementById('profile-bio').textContent = data.bio || 'Sem bio ainda...';
@@ -641,10 +638,9 @@ const App = {
       document.getElementById('stat-photos').textContent = data.photos_count || 0;
       document.getElementById('stat-favorites').textContent = data.favorites_count || 0;
 
-      if (data.profile_pic) {
-        document.getElementById('profile-img').src = data.profile_pic;
-      } else {
-        document.getElementById('profile-img').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">👤</text></svg>';
+      const profileImg = document.getElementById('profile-img');
+      if (profileImg) {
+        profileImg.src = data.profile_pic || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">👤</text></svg>';
       }
     } catch (error) {
       console.error('Erro ao carregar perfil:', error);
@@ -666,31 +662,35 @@ const App = {
     const name = document.getElementById('edit-name').value.trim();
     const bio = document.getElementById('edit-bio').value.trim();
 
+    if (!this.user?.token) {
+      this.logout();
+      return;
+    }
+
     try {
-      const token = localStorage.getItem('mca_session');
-      if (!token) {
-        this.toast('Faça login primeiro', 'error');
-        return;
-      }
-
-      const session = JSON.parse(token);
-      const accessToken = session.token;
-
       const response = await fetch(`${API_URL}/profile/me`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          'Authorization': `Bearer ${this.user.token}`,
         },
-        body: JSON.stringify({ name, bio })
+        body: JSON.stringify({ name, bio }),
       });
 
       if (!response.ok) {
         if (response.status === 401) {
           this.toast('Sessão expirada', 'error');
           this.logout();
+          return;
         }
         throw new Error('Erro ao atualizar perfil');
+      }
+
+      // Atualiza nome em memória e na sidebar
+      if (name) {
+        this.user.name = name;
+        this.saveSession();
+        this.renderSidebarUser();
       }
 
       this.closeModalById('modal-edit-profile');
@@ -702,6 +702,7 @@ const App = {
     }
   },
 
+  // ========== UPLOAD FOTO DE PERFIL ==========
   async uploadProfilePic(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -716,29 +717,26 @@ const App = {
       return;
     }
 
+    if (!this.user?.token) {
+      this.logout();
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const token = localStorage.getItem('mca_session');
-      if (!token) {
-        this.toast('Faça login primeiro', 'error');
-        return;
-      }
-
-      const session = JSON.parse(token);
-      const accessToken = session.token;
-
       const response = await fetch(`${API_URL}/profile/upload-pic`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-        body: formData
+        headers: { 'Authorization': `Bearer ${this.user.token}` },
+        body: formData,
       });
 
       if (!response.ok) {
         if (response.status === 401) {
           this.toast('Sessão expirada', 'error');
           this.logout();
+          return;
         }
         throw new Error('Erro no upload');
       }
