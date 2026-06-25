@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional
-import cloudinary
-import cloudinary.uploader
+import os
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -14,11 +12,8 @@ from app.schemas.auth import UserUpdate, UserProfileResponse
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
-@router.get("/me", response_model=UserProfileResponse)
-async def get_my_profile(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+
+async def _profile_response(current_user: User, db: AsyncSession) -> UserProfileResponse:
     albums_count = await db.scalar(
         select(func.count()).select_from(Album).where(Album.user_id == current_user.id)
     )
@@ -31,7 +26,6 @@ async def get_my_profile(
             Photo.is_fav == True
         )
     )
-    
     return UserProfileResponse(
         id=current_user.id,
         name=current_user.name,
@@ -41,8 +35,17 @@ async def get_my_profile(
         albums_count=albums_count or 0,
         photos_count=photos_count or 0,
         favorites_count=favorites_count or 0,
-        created_at=current_user.created_at
+        created_at=current_user.created_at,
     )
+
+
+@router.get("/me", response_model=UserProfileResponse)
+async def get_my_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _profile_response(current_user, db)
+
 
 @router.patch("/me", response_model=UserProfileResponse)
 async def update_profile(
@@ -56,11 +59,11 @@ async def update_profile(
         current_user.bio = data.bio
     if data.profile_pic is not None:
         current_user.profile_pic = data.profile_pic
-    
+
     await db.commit()
     await db.refresh(current_user)
-    
-    return await get_my_profile(current_user, db)
+    return await _profile_response(current_user, db)
+
 
 @router.post("/upload-pic", response_model=UserProfileResponse)
 async def upload_profile_pic(
@@ -68,6 +71,28 @@ async def upload_profile_pic(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Import e configuração aqui dentro — não quebra o módulo se faltar credencial
+    try:
+        import cloudinary
+        import cloudinary.uploader
+
+        cloudinary.config(
+            cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+            api_key=os.environ.get("CLOUDINARY_API_KEY"),
+            api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+        )
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Cloudinary não instalado no servidor")
+
+    if not os.environ.get("CLOUDINARY_CLOUD_NAME"):
+        raise HTTPException(status_code=500, detail="Cloudinary não configurado no servidor")
+
+    if file.size and file.size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Imagem muito grande (máx 5MB)")
+
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Formato não suportado")
+
     try:
         content = await file.read()
         upload_result = cloudinary.uploader.upload(
@@ -77,12 +102,12 @@ async def upload_profile_pic(
             resource_type="image",
             transformation=[
                 {"width": 300, "height": 300, "crop": "fill", "gravity": "face"},
-                {"quality": "auto"}
-            ]
+                {"quality": "auto"},
+            ],
         )
         current_user.profile_pic = upload_result.get("secure_url")
         await db.commit()
         await db.refresh(current_user)
-        return await get_my_profile(current_user, db)
+        return await _profile_response(current_user, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no upload: {str(e)}")
