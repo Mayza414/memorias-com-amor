@@ -24,7 +24,7 @@ def _make_tokens(user: User) -> TokenResponse:
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-@limiter.limit("5/minute")
+@limiter.limit(2/minute")
 async def register(
     request: Request,
     body: RegisterRequest,
