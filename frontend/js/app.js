@@ -99,7 +99,7 @@ const App = {
         id: this.user.id,
         email: this.user.email,
         name: this.user.name,
-        token: this.user.token,        // ← ADICIONADO
+        token: this.user.token,
         refreshToken: this.user.refreshToken,
       }));
     } catch { }
@@ -109,16 +109,18 @@ const App = {
     try { localStorage.removeItem('mca_session'); } catch { }
   },
 
-  saveSession() {
+  async restoreSession() {
     try {
-      localStorage.setItem('mca_session', JSON.stringify({
-        id: this.user.id,
-        email: this.user.email,
-        name: this.user.name,
-        token: this.user.token,        // ← ADICIONE ESTA LINHA
-        refreshToken: this.user.refreshToken,
-      }));
-    } catch { }
+      const saved = JSON.parse(localStorage.getItem('mca_session') || 'null');
+      if (!saved?.refreshToken) return false;
+      const tokens = await Auth.refresh(saved.refreshToken);
+      this.user = { ...saved, token: tokens.access_token, refreshToken: tokens.refresh_token };
+      this.saveSession();
+      return true;
+    } catch {
+      this.clearSession();
+      return false;
+    }
   },
 
   async login() {
@@ -297,6 +299,15 @@ const App = {
   closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('open');
+  },
+
+  // ========== SOCIAL LOGIN ==========
+  loginWithGoogle() {
+    window.location.href = 'https://memorias-com-amor.onrender.com/api/auth/google/login';
+  },
+
+  loginWithGitHub() {
+    window.location.href = 'https://memorias-com-amor.onrender.com/api/auth/github/login';
   },
 
   // ========== ÁLBUNS ==========
@@ -686,7 +697,6 @@ const App = {
         throw new Error('Erro ao atualizar perfil');
       }
 
-      // Atualiza nome em memória e na sidebar
       if (name) {
         this.user.name = name;
         this.saveSession();

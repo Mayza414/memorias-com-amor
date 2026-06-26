@@ -32,13 +32,29 @@
           </svg>
           <span>Memórias com Amor</span>
         </div>
+
+        <!-- ===== LOGIN TAB ===== -->
         <div id="tab-login" class="auth-tab active">
-          <!-- Botões sociais -->
+          <h2>Bem-vinda de volta</h2>
+          <p class="auth-sub">Entre para ver suas memórias</p>
+
+          <div class="form-group">
+            <label>E-mail</label>
+            <input type="email" id="login-email" placeholder="seu@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" id="login-pass" placeholder="••••••••" />
+          </div>
+          <div id="login-error" class="form-error hidden"></div>
+
+          <button class="btn-primary" onclick="App.login()">Entrar</button>
+
+          <!-- BOTÕES SOCIAIS -->
           <div class="auth-divider"><span>ou</span></div>
 
           <div class="social-buttons">
-            <button class="btn-google"
-              onclick="window.location.href='https://memorias-com-amor.onrender.com/api/auth/google/login'">
+            <button class="btn-google" onclick="App.loginWithGoogle()">
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -52,8 +68,7 @@
               Entrar com Google
             </button>
 
-            <button class="btn-github"
-              onclick="window.location.href='https://memorias-com-amor.onrender.com/api/auth/github/login'">
+            <button class="btn-github" onclick="App.loginWithGitHub()">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path
                   d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.205 11.387.6.113.82-.26.82-.58 0-.287-.01-1.05-.015-2.06-3.338.726-4.042-1.61-4.042-1.61-.546-1.39-1.335-1.76-1.335-1.76-1.09-.745.082-.73.082-.73 1.205.085 1.838 1.237 1.838 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.468-2.38 1.235-3.22-.123-.3-.535-1.52.117-3.16 0 0 1.008-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.29-1.552 3.297-1.23 3.297-1.23.653 1.64.24 2.86.118 3.16.768.84 1.233 1.91 1.233 3.22 0 4.61-2.804 5.62-5.476 5.92.43.37.824 1.102.824 2.22 0 1.602-.015 2.894-.015 3.287 0 .322.218.694.825.57C20.565 21.795 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
@@ -61,23 +76,14 @@
               Entrar com GitHub
             </button>
           </div>
-          <h2>Bem-vinda de volta</h2>
-          <p class="auth-sub">Entre para ver suas memórias</p>
-          <div class="form-group">
-            <label>E-mail</label>
-            <input type="email" id="login-email" placeholder="seu@email.com" />
-          </div>
-          <div class="form-group">
-            <label>Senha</label>
-            <input type="password" id="login-pass" placeholder="••••••••" />
-          </div>
-          <div id="login-error" class="form-error hidden"></div>
-          <button class="btn-primary" onclick="App.login()">Entrar</button>
+
           <p class="auth-switch">Não tem conta? <a onclick="App.showRegister()">Criar conta</a></p>
           <div class="auth-demo">
             <button class="btn-demo" onclick="App.loginDemo()">✨ Entrar com conta demo</button>
           </div>
         </div>
+
+        <!-- ===== REGISTER TAB ===== -->
         <div id="tab-register" class="auth-tab hidden">
           <h2>Criar sua conta</h2>
           <p class="auth-sub">Comece a guardar seus momentos</p>
@@ -97,6 +103,7 @@
           <button class="btn-primary" onclick="App.register()">Criar conta</button>
           <p class="auth-switch">Já tem conta? <a onclick="App.showLogin()">Entrar</a></p>
         </div>
+
       </div>
     </div>
   </div>
@@ -139,7 +146,6 @@
           </svg>
           Linha do tempo
         </a>
-        <!-- NOVO: Link para o Perfil -->
         <a class="nav-item" onclick="App.navigate('profile')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -277,7 +283,7 @@
         </div>
       </div>
 
-      <!-- ===== NOVA VIEW: PERFIL ===== -->
+      <!-- ===== VIEW PERFIL ===== -->
       <div id="view-profile" class="view hidden">
         <div class="view-header">
           <div>
@@ -291,7 +297,6 @@
 
         <div class="profile-container">
           <div class="profile-card">
-            <!-- Foto de perfil -->
             <div class="profile-pic-wrapper">
               <div class="profile-pic" id="profile-pic">
                 <img id="profile-img" src="" alt="Foto de perfil" />
@@ -303,13 +308,11 @@
               </div>
             </div>
 
-            <!-- Informações -->
             <div class="profile-info">
               <h2 id="profile-name">Carregando...</h2>
               <p id="profile-email" class="profile-email">email@email.com</p>
               <p id="profile-bio" class="profile-bio">Sem bio ainda...</p>
 
-              <!-- Estatísticas -->
               <div class="profile-stats">
                 <div class="stat-item">
                   <span class="stat-number" id="stat-albums">0</span>
@@ -328,7 +331,6 @@
           </div>
         </div>
       </div>
-      <!-- ===== FIM DA VIEW PERFIL ===== -->
 
     </main>
   </div>
