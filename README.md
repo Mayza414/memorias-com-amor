@@ -1,3 +1,7 @@
+# 📸 Memórias com Amor
+
+Uma aplicação web para guardar e organizar memórias especiais com fotos e álbuns personalizados.
+
 ## ✨ Funcionalidades
 
 | Funcionalidade | Descrição |
@@ -60,3 +64,111 @@ docker exec -it mca_backend alembic upgrade head
 # Inicie o frontend
 cd frontend
 python3 -m http.server 3000
+Acesse
+Frontend: http://localhost:3000
+
+API: http://localhost:8000
+
+Documentação da API: http://localhost:8000/api/docs
+
+Produção
+Frontend: https://memorias-com-amor-frontend.vercel.app
+
+Backend: https://memorias-com-amor.onrender.com
+
+Documentação da API: https://memorias-com-amor.onrender.com/api/docs
+
+📡 Endpoints da API
+
+Autenticação
+Método	Endpoint	Descrição	Limite
+POST	/api/auth/register	Registrar novo usuário	5/min
+POST	/api/auth/login	Login	10/min
+POST	/api/auth/refresh	Renovar token	-
+GET	/api/auth/me	Dados do usuário	-
+Álbuns
+Método	Endpoint	Descrição
+GET	/api/albums	Listar álbuns
+POST	/api/albums	Criar álbum
+GET	/api/albums/{id}	Buscar álbum
+PATCH	/api/albums/{id}	Atualizar álbum
+DELETE	/api/albums/{id}	Deletar álbum
+Fotos
+Método	Endpoint	Descrição
+POST	/api/photos/upload	Upload de foto
+GET	/api/photos/album/{id}	Listar fotos do álbum
+GET	/api/photos/all	Listar todas as fotos
+PATCH	/api/photos/{id}	Atualizar foto
+DELETE	/api/photos/{id}	Deletar foto
+POST	/api/photos/{id}/fav	Favoritar/desfavoritar
+Perfil
+Método	Endpoint	Descrição
+GET	/api/profile/me	Obter perfil
+PATCH	/api/profile/me	Atualizar perfil
+POST	/api/profile/upload-pic	Upload de foto de perfil
+
+🔒 Segurança
+
+Rate Limiting - Limite de requisições por IP (registro: 5/min, login: 10/min)
+
+Headers de Segurança - X-Content-Type-Options, X-Frame-Options, CSP
+
+Validação de Senha - Mínimo 8 caracteres, maiúscula, minúscula, número e especial
+
+JWT - Tokens com expiração (60 minutos) e refresh tokens (30 dias)
+
+CORS - Configuração restrita de origens permitidas
+
+📁 Estrutura do Projeto
+
+memorias-com-amor/
+├── backend/
+│   ├── app/
+│   │   ├── core/          # Configurações, segurança, rate limiting
+│   │   ├── models/        # Modelos SQLAlchemy
+│   │   ├── routers/       # Rotas da API
+│   │   ├── schemas/       # Schemas Pydantic
+│   │   └── main.py        # Entry point
+│   ├── alembic/           # Migrações
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── css/               # Estilos
+│   ├── js/                # JavaScript
+│   ├── img/               # Imagens e favicons
+│   ├── docs.html          # Documentação do site
+│   └── index.html         # Página principal
+├── docker-compose.yml
+└── README.md
+
+🌐 URLs do Projeto
+
+Serviço	URL
+Frontend	https://memorias-com-amor-frontend.vercel.app
+Backend	https://memorias-com-amor.onrender.com
+Swagger UI	https://memorias-com-amor.onrender.com/api/docs
+ReDoc	https://memorias-com-amor.onrender.com/api/redoc
+GitHub	https://github.com/Mayza414/memorias-com-amor
+
+🤝 Contribuição
+
+Faça um fork do projeto
+
+Crie uma branch para sua feature (git checkout -b feature/nova-feature)
+
+Commit suas mudanças (git commit -m 'feat: adiciona nova feature')
+
+Push para a branch (git push origin feature/nova-feature)
+
+Abra um Pull Request
+
+📄 Licença
+Este projeto está sob a licença MIT.
+
+👩‍💻 Autora
+
+Mayza Silva
+
+GitHub: @Mayza414
+
+Projeto: Memórias com Amor
