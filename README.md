@@ -1,4 +1,4 @@
-# ![Memórias com Amor](assets/img/favicon-32x32.png) Memórias com Amor
+# ![Memórias com Amor](assets/img/favicon-32x32.png) 
 
 Uma aplicação web para guardar e organizar memórias especiais com fotos e álbuns personalizados.
 
