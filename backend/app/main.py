@@ -12,6 +12,8 @@ from app.core.database import engine, Base
 from app.routers import auth, albums, photos, profile, social_auth  # ← ADICIONEI social_auth AQUI
 from app.core.rate_limit import limiter, rate_limit_handler
 
+from app.routers import auth, albums, photos, profile, social_auth
+
 settings = get_settings()
 
 @asynccontextmanager
@@ -106,7 +108,7 @@ app.include_router(auth.router)
 app.include_router(albums.router)
 app.include_router(photos.router)
 app.include_router(profile.router)
-app.include_router(social_auth.router)  # ← MOVI PARA CÁ
+app.include_router(social_auth.router)  # ← ADICIONE ESTA LINHA
 
 # Health check
 @app.get("/api/health")
