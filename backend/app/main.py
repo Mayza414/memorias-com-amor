@@ -9,10 +9,8 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.routers import auth, albums, photos, profile, social_auth  # ← ADICIONEI social_auth AQUI
+from app.routers import auth, albums, photos, profile, social_auth  # ← APENAS UMA VEZ
 from app.core.rate_limit import limiter, rate_limit_handler
-
-from app.routers import auth, albums, photos, profile, social_auth
 
 settings = get_settings()
 
@@ -21,23 +19,19 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-        # Adiciona colunas se não existirem
         try:
-            # Verifica bio
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='bio'"
             ))
             if not result.fetchone():
                 await conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
             
-            # Verifica profile_pic
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='profile_pic'"
             ))
             if not result.fetchone():
                 await conn.execute(text("ALTER TABLE users ADD COLUMN profile_pic VARCHAR(500)"))
             
-            # Verifica updated_at
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='updated_at'"
             ))
@@ -103,12 +97,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rotas - TODAS JUNTAS AQUI
+# Rotas
 app.include_router(auth.router)
 app.include_router(albums.router)
 app.include_router(photos.router)
 app.include_router(profile.router)
-app.include_router(social_auth.router)  # ← ADICIONE ESTA LINHA
+app.include_router(social_auth.router)  # ← ADICIONADO
 
 # Health check
 @app.get("/api/health")
