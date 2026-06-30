@@ -1,6 +1,6 @@
-﻿from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
 
 
 class AlbumBase(BaseModel):
@@ -27,8 +27,15 @@ class AlbumOut(AlbumBase):
     cover_url: Optional[str] = None
     photo_count: int = 0
     created_at: datetime
+    is_shared: bool = False
+    share_token: Optional[str] = None
+    shared_with: List[str] = []
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class ShareAlbumRequest(BaseModel):
+    email: str
 
 
 class PhotoBase(BaseModel):

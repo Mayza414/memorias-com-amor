@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
-from typing import Optional
-from sqlalchemy import String, Text, Integer, Date, DateTime, ForeignKey, func
+from typing import Optional, List
+from sqlalchemy import String, Text, Integer, Date, DateTime, ForeignKey, Boolean, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -24,6 +24,11 @@ class Album(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    
+    # CAMPOS DE COMPARTILHAMENTO
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    share_token: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+    shared_with: Mapped[List[str]] = mapped_column(JSON, default=list)
 
     user: Mapped["User"] = relationship("User", back_populates="albums")
     photos: Mapped[list["Photo"]] = relationship(
