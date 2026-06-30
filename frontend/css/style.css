@@ -1358,8 +1358,10 @@ button {
 .app-footer {
   border-top: 1px solid var(--border);
   padding: 1.5rem 2rem;
-  margin-top: 2rem;
   background: white;
+  width: 100%;
+  margin-left: 0;
+  /* Remove qualquer margem que possa estar causando o corte */
 }
 
 .footer-content {
@@ -1393,6 +1395,19 @@ button {
   color: var(--pink-main);
 }
 
+/* Ajuste para o footer não ser cortado pela sidebar */
+#screen-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  padding: 2rem;
+}
+
 @media (max-width: 768px) {
   .app-footer {
     padding: 1rem;
@@ -1405,5 +1420,10 @@ button {
     gap: 1rem;
     flex-wrap: wrap;
     justify-content: center;
+  }
+  .main-content {
+    margin-left: 0;
+    padding: 1rem;
+    padding-top: calc(56px + 1rem);
   }
 }
