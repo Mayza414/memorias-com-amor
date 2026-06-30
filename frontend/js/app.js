@@ -1,5 +1,5 @@
 /* =====================================================
-   MEMÓRIAS COM AMOR — app.js (VERSÃO COMPLETA COM PERFIL)
+   MEMÓRIAS COM AMOR — app.js (VERSÃO COMPLETA)
    ===================================================== */
 
 const API_URL = 'https://memorias-com-amor.onrender.com/api';
@@ -93,6 +93,7 @@ const App = {
   pendingFiles: [],
   lightbox: { photos: [], index: 0 },
 
+  // ========== SESSÃO ==========
   saveSession() {
     try {
       localStorage.setItem('mca_session', JSON.stringify({
@@ -123,6 +124,7 @@ const App = {
     }
   },
 
+  // ========== AUTH ==========
   async login() {
     const email = document.getElementById('login-email').value.trim();
     const pass = document.getElementById('login-pass').value;
@@ -239,6 +241,7 @@ const App = {
     document.getElementById('tab-login').classList.add('hidden');
   },
 
+  // ========== BOOT ==========
   bootApp() {
     document.getElementById('screen-auth').classList.add('hidden');
     document.getElementById('screen-auth').classList.remove('active');
@@ -260,6 +263,7 @@ const App = {
     if (email) email.textContent = u.email;
   },
 
+  // ========== NAVEGAÇÃO ==========
   navigate(view) {
     document.querySelectorAll('.view').forEach(v => {
       v.classList.remove('active');
@@ -283,7 +287,10 @@ const App = {
       if (ni) ni.classList.add('active');
     }
 
-    if (view === 'albums') this.loadAlbums();
+    if (view === 'albums') {
+      this.loadAlbums();
+      this.loadSharedAlbums();
+    }
     if (view === 'favorites') this.loadFavorites();
     if (view === 'timeline') this.loadTimeline();
     if (view === 'profile') this.loadProfile();
@@ -301,83 +308,52 @@ const App = {
     if (sidebar) sidebar.classList.remove('open');
   },
 
-  // ========== CAPTURAR TOKEN DA URL ==========
-handleRedirect() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const token = urlParams.get('token');
-  const authError = urlParams.get('auth_error');
-  
-  if (authError) {
-    this.toast('Erro no login social: ' + authError, 'error');
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-  
-  if (token) {
-    window.history.replaceState({}, document.title, window.location.pathname);
-    this.fetchUserFromToken(token);
-  }
-},
-
-async fetchUserFromToken(token) {
-  try {
-    const response = await fetch(`${API_URL}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-    if (!response.ok) throw new Error('Erro ao buscar usuário');
-    
-    const userData = await response.json();
-    
-    // Define o usuário completo
-    this.user = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.name,
-      token: token,
-      refreshToken: null,
-    };
-    
-    this.saveSession();
-    this.bootApp();
-    this.toast('Login realizado com sucesso! 🎉', 'success');
-  } catch (error) {
-    console.error('Erro ao buscar usuário:', error);
-    this.toast('Erro ao fazer login social', 'error');
-    this.showLogin();
-  }
-},
-
-async fetchUserFromToken(token) {
-  try {
-    const response = await fetch(`${API_URL}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-    if (!response.ok) throw new Error('Erro ao buscar usuário');
-    
-    const userData = await response.json();
-    
-    // CORRIGIDO: Definir o user completamente
-    this.user = {
-      id: userData.id,
-      email: userData.email,
-      name: userData.name,
-      token: token,
-      refreshToken: null,
-    };
-    
-    this.saveSession();
-    this.bootApp();
-    this.toast('Login realizado com sucesso! 🎉', 'success');
-  } catch (error) {
-    console.error('Erro ao buscar usuário:', error);
-    this.toast('Erro ao fazer login social', 'error');
-    this.showLogin();
-  }
-},
-
   // ========== SOCIAL LOGIN ==========
+  handleRedirect() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const authError = urlParams.get('auth_error');
+    
+    if (authError) {
+      this.toast('Erro no login social: ' + authError, 'error');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+    
+    if (token) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      this.fetchUserFromToken(token);
+    }
+  },
+
+  async fetchUserFromToken(token) {
+    try {
+      const response = await fetch(`${API_URL}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao buscar usuário');
+      
+      const userData = await response.json();
+      
+      this.user = {
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        token: token,
+        refreshToken: null,
+      };
+      
+      this.saveSession();
+      this.bootApp();
+      this.toast('Login realizado com sucesso! 🎉', 'success');
+    } catch (error) {
+      console.error('Erro ao buscar usuário:', error);
+      this.toast('Erro ao fazer login social', 'error');
+      this.showLogin();
+    }
+  },
+
   loginWithGoogle() {
     window.location.href = 'https://memorias-com-amor.onrender.com/api/auth/google/login';
   },
@@ -939,7 +915,7 @@ async fetchUserFromToken(token) {
     }
   },
 
-  // ========== SHARE ==========
+  // ========== COMPARTILHAMENTO ==========
   shareAlbum() {
     document.getElementById('share-link').value = window.location.href;
     this.openModal('modal-share');
@@ -950,6 +926,125 @@ async fetchUserFromToken(token) {
     input.select();
     navigator.clipboard?.writeText(input.value).catch(() => document.execCommand('copy'));
     this.toast('Link copiado! ✓', 'success');
+  },
+
+  async shareAlbumWithUser() {
+    const email = document.getElementById('share-email').value.trim();
+    const token = this.user?.token;
+    
+    if (!email) {
+      this.toast('Digite o e-mail do usuário', 'error');
+      return;
+    }
+    
+    if (!email.includes('@')) {
+      this.toast('E-mail inválido', 'error');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/albums/${this.currentAlbumId}/share`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ email })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'Erro ao compartilhar');
+      }
+      
+      document.getElementById('share-link-output').value = data.share_link;
+      document.getElementById('share-link-container').style.display = 'block';
+      
+      this.toast(`✅ ${data.message}`, 'success');
+    } catch (error) {
+      this.toast('Erro: ' + error.message, 'error');
+    }
+  },
+
+  copyShareLink() {
+    const input = document.getElementById('share-link-output');
+    input.select();
+    navigator.clipboard?.writeText(input.value).catch(() => document.execCommand('copy'));
+    this.toast('Link copiado! ✓', 'success');
+  },
+
+  openShareModal() {
+    document.getElementById('share-email').value = '';
+    document.getElementById('share-link-container').style.display = 'none';
+    document.getElementById('share-link-output').value = '';
+    this.openModal('modal-share-album');
+  },
+
+  async loadSharedAlbums() {
+    const grid = document.getElementById('shared-albums-grid');
+    const empty = document.getElementById('shared-albums-empty');
+    const section = document.getElementById('shared-albums-section');
+    
+    if (!grid || !empty || !section) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/albums/shared`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
+      
+      const albums = await response.json();
+      
+      if (!albums.length) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        section.classList.add('hidden');
+        return;
+      }
+      
+      section.classList.remove('hidden');
+      empty.classList.add('hidden');
+      
+      grid.innerHTML = albums.map(album => `
+        <div class="album-card" onclick="App.openSharedAlbum('${album.id}')">
+          ${album.cover_url
+            ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
+            : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
+          <div class="album-info">
+            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
+            <div class="album-title">${album.title}</div>
+            <div class="album-meta">
+              <span>${album.photo_count || 0} fotos</span>
+              <span class="shared-badge">🔗 Compartilhado</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      
+    } catch (error) {
+      console.error('Erro ao carregar álbuns compartilhados:', error);
+    }
+  },
+
+  async openSharedAlbum(albumId) {
+    try {
+      const response = await fetch(`${API_URL}/albums/${albumId}`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao carregar álbum');
+      
+      const album = await response.json();
+      
+      this.currentAlbumId = albumId;
+      this.albums = [album, ...this.albums.filter(a => a.id !== albumId)];
+      
+      this.openAlbum(albumId);
+    } catch (error) {
+      this.toast('Erro ao abrir álbum compartilhado', 'error');
+    }
   },
 
   // ========== LIGHTBOX ==========
@@ -1015,42 +1110,38 @@ async fetchUserFromToken(token) {
   },
 
   async deletePhoto() {
-  if (!confirm('Remover esta foto?')) return;
-  const photo = this.lightbox.photos[this.lightbox.index];
-  try {
-    const response = await fetch(`${API_URL}/photos/${photo.id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${this.user.token}` }
-    });
+    if (!confirm('Remover esta foto?')) return;
+    const photo = this.lightbox.photos[this.lightbox.index];
+    try {
+      const response = await fetch(`${API_URL}/photos/${photo.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
 
-    // DELETE retorna 204 No Content (sem corpo)
-    if (response.status === 204) {
-      // Remove da lista
-      this.currentPhotos = this.currentPhotos.filter(p => p.id !== photo.id);
-      this.lightbox.photos = this.lightbox.photos.filter(p => p.id !== photo.id);
-      this.closeLightboxDirect();
-      this.renderPhotoGrid('album-photos-grid', 'album-photos-empty', this.currentPhotos);
-      
-      // Atualiza contagem do álbum
-      const album = this.albums.find(a => a.id === this.currentAlbumId);
-      if (album) {
-        album.photo_count = Math.max(0, (album.photo_count || 1) - 1);
+      if (response.status === 204) {
+        this.currentPhotos = this.currentPhotos.filter(p => p.id !== photo.id);
+        this.lightbox.photos = this.lightbox.photos.filter(p => p.id !== photo.id);
+        this.closeLightboxDirect();
+        this.renderPhotoGrid('album-photos-grid', 'album-photos-empty', this.currentPhotos);
+        
+        const album = this.albums.find(a => a.id === this.currentAlbumId);
+        if (album) {
+          album.photo_count = Math.max(0, (album.photo_count || 1) - 1);
+        }
+        
+        this.toast('Foto removida.', 'success');
+        return;
       }
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Erro ao remover foto');
       
       this.toast('Foto removida.', 'success');
-      return;
+    } catch (error) {
+      console.error('Erro ao remover foto:', error);
+      this.toast('Erro ao remover foto: ' + error.message, 'error');
     }
-
-    // Se não for 204, tenta ler o JSON
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || 'Erro ao remover foto');
-    
-    this.toast('Foto removida.', 'success');
-  } catch (error) {
-    console.error('Erro ao remover foto:', error);
-    this.toast('Erro ao remover foto: ' + error.message, 'error');
-  }
-},
+  },
 
   // ========== MODAIS ==========
   openModal(id) {
@@ -1122,7 +1213,7 @@ App.restoreSession().then(logado => {
   if (logado) {
     App.bootApp();
   } else {
-    App.handleRedirect();  // ← CHAMA A FUNÇÃO AQUI
+    App.handleRedirect();
   }
 });
 
