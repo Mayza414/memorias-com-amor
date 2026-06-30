@@ -160,6 +160,14 @@
           </svg>
           Documentação
         </a>
+        <a class="nav-item" onclick="App.navigate('shared')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+          Compartilhados
+        </a>
       </nav>
       <div class="sidebar-footer">
         <a class="nav-item nav-logout" onclick="App.logout()">
@@ -351,6 +359,22 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Shared Albums View -->
+      <div id="view-shared" class="view hidden">
+        <div class="view-header">
+          <div>
+            <h1>📂 Álbuns Compartilhados</h1>
+            <p class="view-sub">Álbuns que outros usuários compartilharam com você</p>
+          </div>
+        </div>
+        <div id="shared-albums-grid-full" class="albums-grid"></div>
+        <div id="shared-albums-empty-full" class="empty-state hidden">
+          <div class="empty-icon">🔗</div>
+          <h3>Nenhum álbum compartilhado</h3>
+          <p>Quando alguém compartilhar um álbum com você, ele aparecerá aqui.</p>
         </div>
       </div>
 

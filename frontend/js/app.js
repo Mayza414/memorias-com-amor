@@ -249,6 +249,7 @@ const App = {
     document.getElementById('screen-app').classList.add('active');
 
     this.renderSidebarUser();
+    this.restoreSidebarState();
     this.navigate('albums');
   },
 
@@ -280,7 +281,7 @@ const App = {
       el.classList.add('active');
     }
 
-    const navMap = { albums: 0, favorites: 1, timeline: 2, profile: 3 };
+    const navMap = { albums: 0, favorites: 1, timeline: 2, profile: 3, shared: 4 };
     const navItems = document.querySelectorAll('.nav-item');
     if (navMap[view] !== undefined) {
       const ni = navItems[navMap[view]];
@@ -291,6 +292,7 @@ const App = {
       this.loadAlbums();
       this.loadSharedAlbums();
     }
+    if (view === 'shared') this.loadSharedAlbumsView();
     if (view === 'favorites') this.loadFavorites();
     if (view === 'timeline') this.loadTimeline();
     if (view === 'profile') this.loadProfile();
@@ -306,6 +308,24 @@ const App = {
   closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('open');
+  },
+
+  // ========== MINIMIZAR SIDEBAR ==========
+  toggleSidebarMinimize() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.classList.toggle('minimized');
+      const isMinimized = sidebar.classList.contains('minimized');
+      localStorage.setItem('sidebar_minimized', isMinimized);
+    }
+  },
+
+  restoreSidebarState() {
+    const isMinimized = localStorage.getItem('sidebar_minimized') === 'true';
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar && isMinimized) {
+      sidebar.classList.add('minimized');
+    }
   },
 
   // ========== SOCIAL LOGIN ==========
@@ -368,7 +388,6 @@ const App = {
     const albumId = urlParams.get('album');
     
     if (albumId) {
-      // Aguarda os álbuns carregarem
       const checkAlbums = setInterval(() => {
         if (this.albums.length > 0) {
           clearInterval(checkAlbums);
@@ -1043,12 +1062,64 @@ const App = {
               <span>${album.photo_count || 0} fotos</span>
               <span class="shared-badge">🔗 Compartilhado</span>
             </div>
+            <div class="album-owner" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+              👤 Criado por: <strong>${album.owner_name || 'Usuário'}</strong>
+            </div>
           </div>
         </div>
       `).join('');
       
     } catch (error) {
       console.error('Erro ao carregar álbuns compartilhados:', error);
+    }
+  },
+
+  async loadSharedAlbumsView() {
+    const grid = document.getElementById('shared-albums-grid-full');
+    const empty = document.getElementById('shared-albums-empty-full');
+    
+    if (!grid || !empty) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/albums/shared`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
+      
+      const albums = await response.json();
+      
+      if (!albums.length) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      
+      empty.classList.add('hidden');
+      
+      grid.innerHTML = albums.map(album => `
+        <div class="album-card" onclick="App.openSharedAlbum('${album.id}')">
+          ${album.cover_url
+            ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
+            : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
+          <div class="album-info">
+            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
+            <div class="album-title">${album.title}</div>
+            <div class="album-meta">
+              <span>${album.photo_count || 0} fotos</span>
+              <span class="shared-badge">🔗 Compartilhado</span>
+            </div>
+            <div class="album-owner" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+              👤 Criado por: <strong>${album.owner_name || 'Usuário'}</strong>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      
+    } catch (error) {
+      console.error('Erro ao carregar álbuns compartilhados:', error);
+      grid.innerHTML = '';
+      empty.classList.remove('hidden');
     }
   },
 

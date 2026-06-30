@@ -1427,3 +1427,76 @@ button {
     padding-top: calc(56px + 1rem);
   }
 }
+
+/* Sidebar Minimizada */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 1.25rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.sidebar-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s, transform 0.2s;
+  margin-left: auto;
+}
+
+.sidebar-toggle:hover {
+  background: var(--cream);
+  color: var(--text-primary);
+}
+
+.sidebar.minimized {
+  width: 60px;
+}
+
+.sidebar.minimized .sidebar-brand,
+.sidebar.minimized .sidebar-user,
+.sidebar.minimized .sidebar-search,
+.sidebar.minimized .sidebar-footer .nav-item span,
+.sidebar.minimized .nav-item span,
+.sidebar.minimized .nav-badge,
+.sidebar.minimized .sidebar-footer .nav-item svg:not(.sidebar-toggle svg) {
+  display: none;
+}
+
+.sidebar.minimized .nav-item {
+  justify-content: center;
+  padding: 0.625rem;
+}
+
+.sidebar.minimized .nav-item svg {
+  margin: 0;
+}
+
+.sidebar.minimized .sidebar-toggle {
+  transform: rotate(180deg);
+}
+
+.sidebar.minimized .sidebar-header {
+  justify-content: center;
+}
+
+.sidebar.minimized .sidebar-header svg:first-child {
+  margin: 0 auto;
+}
+
+.sidebar.minimized .sidebar-footer {
+  padding: 0.75rem 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .sidebar.minimized {
+    width: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+}
