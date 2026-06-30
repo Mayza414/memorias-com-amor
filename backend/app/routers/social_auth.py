@@ -23,11 +23,59 @@ def _make_tokens(user: User) -> TokenResponse:
         user=UserOut.model_validate(user),
     )
 
+
+# ========== GOOGLE ==========
+@router.get("/google/login")
+async def google_login(request: Request):
+    """Inicia o login com Google"""
+    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Callback do Google"""
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo")
+        
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Erro ao obter dados do Google")
+        
+        email = user_info.get("email")
+        name = user_info.get("name") or email.split("@")[0]
+        google_id = user_info.get("sub")
+        
+        # Verifica se usuário já existe
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            user = User(
+                name=name,
+                email=email,
+                hashed_password=hash_password(google_id + "social"),
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+        
+        tokens = _make_tokens(user)
+        return RedirectResponse(f"{FRONTEND_URL}/?token={tokens.access_token}")
+    except Exception as e:
+        return RedirectResponse(f"{FRONTEND_URL}/?auth_error={str(e)}")
+
+
+# ========== GITHUB ==========
 @router.get("/github/login")
 async def github_login(request: Request):
     """Inicia o login com GitHub"""
     redirect_uri = f"{BACKEND_URL}/api/auth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
+
 
 @router.get("/github/callback")
 async def github_callback(
@@ -85,8 +133,6 @@ async def github_callback(
             await db.refresh(user)
         
         tokens = _make_tokens(user)
-        return RedirectResponse(
-            f"{FRONTEND_URL}/?token={tokens.access_token}"
-        )
+        return RedirectResponse(f"{FRONTEND_URL}/?token={tokens.access_token}")
     except Exception as e:
         return RedirectResponse(f"{FRONTEND_URL}/?auth_error={str(e)}")
