@@ -333,13 +333,13 @@ const App = {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     const authError = urlParams.get('auth_error');
-    
+
     if (authError) {
       this.toast('Erro no login social: ' + authError, 'error');
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
-    
+
     if (token) {
       window.history.replaceState({}, document.title, window.location.pathname);
       this.fetchUserFromToken(token);
@@ -351,11 +351,11 @@ const App = {
       const response = await fetch(`${API_URL}/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       if (!response.ok) throw new Error('Erro ao buscar usuário');
-      
+
       const userData = await response.json();
-      
+
       this.user = {
         id: userData.id,
         email: userData.email,
@@ -363,7 +363,7 @@ const App = {
         token: token,
         refreshToken: null,
       };
-      
+
       this.saveSession();
       this.bootApp();
       this.toast('Login realizado com sucesso! 🎉', 'success');
@@ -386,7 +386,7 @@ const App = {
   checkAlbumParam() {
     const urlParams = new URLSearchParams(window.location.search);
     const albumId = urlParams.get('album');
-    
+
     if (albumId) {
       const checkAlbums = setInterval(() => {
         if (this.albums.length > 0) {
@@ -399,7 +399,7 @@ const App = {
           }
         }
       }, 500);
-      
+
       setTimeout(() => clearInterval(checkAlbums), 10000);
     }
   },
@@ -957,151 +957,69 @@ const App = {
     }
   },
 
-  // ========== COMPARTILHAMENTO ==========
-  shareAlbum() {
-    const shareLink = `${window.location.origin}${window.location.pathname}?album=${this.currentAlbumId}`;
-    document.getElementById('share-link').value = shareLink;
-    this.openModal('modal-share');
+  // ========== COMPARTILHAMENTO SOCIAL ==========
+  shareViaWhatsApp() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text + '\n' + link)}`, '_blank');
   },
 
-  copyLink() {
-    const input = document.getElementById('share-link');
-    input.select();
-    navigator.clipboard?.writeText(input.value).catch(() => document.execCommand('copy'));
-    this.toast('Link copiado! ✓', 'success');
+  shareViaTelegram() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
   },
 
-  async shareAlbumWithUser() {
-    const email = document.getElementById('share-email').value.trim();
-    const token = this.user?.token;
-    
-    if (!email) {
-      this.toast('Digite o e-mail do usuário', 'error');
-      return;
-    }
-    
-    if (!email.includes('@')) {
-      this.toast('E-mail inválido', 'error');
-      return;
-    }
-    
-    try {
-      const response = await fetch(`${API_URL}/albums/${this.currentAlbumId}/share`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ email })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.detail || 'Erro ao compartilhar');
-      }
-      
-      document.getElementById('share-link-output').value = data.share_link;
-      document.getElementById('share-link-container').style.display = 'block';
-      
-      this.toast(`✅ ${data.message}`, 'success');
-    } catch (error) {
-      this.toast('Erro: ' + error.message, 'error');
-    }
+  shareViaEmail() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const subject = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
+    const body = `Olá! Veja este álbum de fotos:\n\n${link}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   },
 
-  copyShareLink() {
-    const input = document.getElementById('share-link-output');
-    input.select();
-    navigator.clipboard?.writeText(input.value).catch(() => document.execCommand('copy'));
-    this.toast('Link copiado! ✓', 'success');
+  shareViaTwitter() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
   },
 
-  openShareModal() {
-    document.getElementById('share-email').value = '';
-    document.getElementById('share-link-container').style.display = 'none';
-    document.getElementById('share-link-output').value = '';
-    this.openModal('modal-share-album');
-  },
-
-  async loadSharedAlbums() {
-    const grid = document.getElementById('shared-albums-grid');
-    const empty = document.getElementById('shared-albums-empty');
-    const section = document.getElementById('shared-albums-section');
-    
-    if (!grid || !empty || !section) return;
-    
-    try {
-      const response = await fetch(`${API_URL}/albums/shared`, {
-        headers: { 'Authorization': `Bearer ${this.user.token}` }
-      });
-      
-      if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
-      
-      const albums = await response.json();
-      
-      if (!albums.length) {
-        grid.innerHTML = '';
-        empty.classList.remove('hidden');
-        section.classList.add('hidden');
-        return;
-      }
-      
-      section.classList.remove('hidden');
-      empty.classList.add('hidden');
-      
-      grid.innerHTML = albums.map(album => `
-        <div class="album-card" onclick="App.openSharedAlbum('${album.id}')">
-          ${album.cover_url
-            ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
-            : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
-          <div class="album-info">
-            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
-            <div class="album-title">${album.title}</div>
-            <div class="album-meta">
-              <span>${album.photo_count || 0} fotos</span>
-              <span class="shared-badge">🔗 Compartilhado</span>
-            </div>
-            <div class="album-owner" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-              👤 Criado por: <strong>${album.owner_name || 'Usuário'}</strong>
-            </div>
-          </div>
-        </div>
-      `).join('');
-      
-    } catch (error) {
-      console.error('Erro ao carregar álbuns compartilhados:', error);
-    }
+  shareViaFacebook() {
+    const link = document.getElementById('share-link').value;
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`, '_blank');
   },
 
   async loadSharedAlbumsView() {
     const grid = document.getElementById('shared-albums-grid-full');
     const empty = document.getElementById('shared-albums-empty-full');
-    
+
     if (!grid || !empty) return;
-    
+
     try {
       const response = await fetch(`${API_URL}/albums/shared`, {
         headers: { 'Authorization': `Bearer ${this.user.token}` }
       });
-      
+
       if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
-      
+
       const albums = await response.json();
-      
+
       if (!albums.length) {
         grid.innerHTML = '';
         empty.classList.remove('hidden');
         return;
       }
-      
+
       empty.classList.add('hidden');
-      
+
       grid.innerHTML = albums.map(album => `
         <div class="album-card" onclick="App.openSharedAlbum('${album.id}')">
           ${album.cover_url
-            ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
-            : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
+          ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
+          : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
           <div class="album-info">
             <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
             <div class="album-title">${album.title}</div>
@@ -1115,7 +1033,7 @@ const App = {
           </div>
         </div>
       `).join('');
-      
+
     } catch (error) {
       console.error('Erro ao carregar álbuns compartilhados:', error);
       grid.innerHTML = '';
@@ -1128,14 +1046,14 @@ const App = {
       const response = await fetch(`${API_URL}/albums/${albumId}`, {
         headers: { 'Authorization': `Bearer ${this.user.token}` }
       });
-      
+
       if (!response.ok) throw new Error('Erro ao carregar álbum');
-      
+
       const album = await response.json();
-      
+
       this.currentAlbumId = albumId;
       this.albums = [album, ...this.albums.filter(a => a.id !== albumId)];
-      
+
       this.openAlbum(albumId);
     } catch (error) {
       this.toast('Erro ao abrir álbum compartilhado', 'error');
@@ -1218,19 +1136,19 @@ const App = {
         this.lightbox.photos = this.lightbox.photos.filter(p => p.id !== photo.id);
         this.closeLightboxDirect();
         this.renderPhotoGrid('album-photos-grid', 'album-photos-empty', this.currentPhotos);
-        
+
         const album = this.albums.find(a => a.id === this.currentAlbumId);
         if (album) {
           album.photo_count = Math.max(0, (album.photo_count || 1) - 1);
         }
-        
+
         this.toast('Foto removida.', 'success');
         return;
       }
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Erro ao remover foto');
-      
+
       this.toast('Foto removida.', 'success');
     } catch (error) {
       console.error('Erro ao remover foto:', error);
