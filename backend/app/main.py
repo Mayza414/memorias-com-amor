@@ -17,28 +17,62 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
+        # Cria as tabelas
         await conn.run_sync(Base.metadata.create_all)
         
+        # ===== COLUNAS DOS USUÁRIOS =====
         try:
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='bio'"
             ))
             if not result.fetchone():
                 await conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
+                print("✅ Coluna bio adicionada!")
             
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='profile_pic'"
             ))
             if not result.fetchone():
                 await conn.execute(text("ALTER TABLE users ADD COLUMN profile_pic VARCHAR(500)"))
+                print("✅ Coluna profile_pic adicionada!")
             
             result = await conn.execute(text(
                 "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='updated_at'"
             ))
             if not result.fetchone():
                 await conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
+                print("✅ Coluna updated_at adicionada!")
         except Exception as e:
-            print(f"⚠️ Erro ao adicionar colunas: {e}")
+            print(f"⚠️ Erro ao adicionar colunas de usuário: {e}")
+        
+        # ===== COLUNAS DE COMPARTILHAMENTO DOS ÁLBUNS =====
+        try:
+            # Verifica is_shared
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='albums' AND column_name='is_shared'"
+            ))
+            if not result.fetchone():
+                await conn.execute(text("ALTER TABLE albums ADD COLUMN is_shared BOOLEAN DEFAULT false"))
+                print("✅ Coluna is_shared adicionada!")
+            
+            # Verifica share_token
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='albums' AND column_name='share_token'"
+            ))
+            if not result.fetchone():
+                await conn.execute(text("ALTER TABLE albums ADD COLUMN share_token VARCHAR(64)"))
+                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_albums_share_token ON albums (share_token)"))
+                print("✅ Coluna share_token adicionada!")
+            
+            # Verifica shared_with
+            result = await conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='albums' AND column_name='shared_with'"
+            ))
+            if not result.fetchone():
+                await conn.execute(text("ALTER TABLE albums ADD COLUMN shared_with JSONB DEFAULT '[]'::jsonb"))
+                print("✅ Coluna shared_with adicionada!")
+        except Exception as e:
+            print(f"⚠️ Erro ao adicionar colunas de compartilhamento: {e}")
     
     yield
 
@@ -123,4 +157,4 @@ async def health_head():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
