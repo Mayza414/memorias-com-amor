@@ -301,6 +301,82 @@ const App = {
     if (sidebar) sidebar.classList.remove('open');
   },
 
+  // ========== CAPTURAR TOKEN DA URL ==========
+handleRedirect() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+  const authError = urlParams.get('auth_error');
+  
+  if (authError) {
+    this.toast('Erro no login social: ' + authError, 'error');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+  
+  if (token) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    this.fetchUserFromToken(token);
+  }
+},
+
+async fetchUserFromToken(token) {
+  try {
+    const response = await fetch(`${API_URL}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) throw new Error('Erro ao buscar usuário');
+    
+    const userData = await response.json();
+    
+    // Define o usuário completo
+    this.user = {
+      id: userData.id,
+      email: userData.email,
+      name: userData.name,
+      token: token,
+      refreshToken: null,
+    };
+    
+    this.saveSession();
+    this.bootApp();
+    this.toast('Login realizado com sucesso! 🎉', 'success');
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    this.toast('Erro ao fazer login social', 'error');
+    this.showLogin();
+  }
+},
+
+async fetchUserFromToken(token) {
+  try {
+    const response = await fetch(`${API_URL}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) throw new Error('Erro ao buscar usuário');
+    
+    const userData = await response.json();
+    
+    // CORRIGIDO: Definir o user completamente
+    this.user = {
+      id: userData.id,
+      email: userData.email,
+      name: userData.name,
+      token: token,
+      refreshToken: null,
+    };
+    
+    this.saveSession();
+    this.bootApp();
+    this.toast('Login realizado com sucesso! 🎉', 'success');
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    this.toast('Erro ao fazer login social', 'error');
+    this.showLogin();
+  }
+},
+
   // ========== SOCIAL LOGIN ==========
   loginWithGoogle() {
     window.location.href = 'https://memorias-com-amor.onrender.com/api/auth/google/login';
@@ -939,20 +1015,42 @@ const App = {
   },
 
   async deletePhoto() {
-    if (!confirm('Remover esta foto?')) return;
-    const photo = this.lightbox.photos[this.lightbox.index];
-    try {
-      await DB.deletePhoto(photo.id, this.user.token);
+  if (!confirm('Remover esta foto?')) return;
+  const photo = this.lightbox.photos[this.lightbox.index];
+  try {
+    const response = await fetch(`${API_URL}/photos/${photo.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${this.user.token}` }
+    });
+
+    // DELETE retorna 204 No Content (sem corpo)
+    if (response.status === 204) {
+      // Remove da lista
       this.currentPhotos = this.currentPhotos.filter(p => p.id !== photo.id);
+      this.lightbox.photos = this.lightbox.photos.filter(p => p.id !== photo.id);
       this.closeLightboxDirect();
       this.renderPhotoGrid('album-photos-grid', 'album-photos-empty', this.currentPhotos);
+      
+      // Atualiza contagem do álbum
       const album = this.albums.find(a => a.id === this.currentAlbumId);
-      if (album) album.photo_count = Math.max(0, (album.photo_count || 1) - 1);
+      if (album) {
+        album.photo_count = Math.max(0, (album.photo_count || 1) - 1);
+      }
+      
       this.toast('Foto removida.', 'success');
-    } catch (e) {
-      this.toast('Erro ao remover foto: ' + e.message, 'error');
+      return;
     }
-  },
+
+    // Se não for 204, tenta ler o JSON
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Erro ao remover foto');
+    
+    this.toast('Foto removida.', 'success');
+  } catch (error) {
+    console.error('Erro ao remover foto:', error);
+    this.toast('Erro ao remover foto: ' + error.message, 'error');
+  }
+},
 
   // ========== MODAIS ==========
   openModal(id) {
@@ -1021,7 +1119,11 @@ const App = {
 
 /* ========== INIT ========== */
 App.restoreSession().then(logado => {
-  if (logado) App.bootApp();
+  if (logado) {
+    App.bootApp();
+  } else {
+    App.handleRedirect();  // ← CHAMA A FUNÇÃO AQUI
+  }
 });
 
 /* ========== EXPOSE ========== */
