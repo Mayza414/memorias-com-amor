@@ -1,8 +1,22 @@
 /* =====================================================
-   MEMÓRIAS COM AMOR — app.js (VERSÃO COMPLETA)
+   MEMÓRIAS COM AMOR — app.js (VERSÃO CORRIGIDA)
    ===================================================== */
 
 const API_URL = 'https://memorias-com-amor.onrender.com/api';
+
+/* ─── SANITIZAÇÃO XSS ───────────────────────────────────────────────────────
+   CORREÇÃO: todo conteúdo do usuário inserido no DOM deve passar por esta
+   função antes de ser interpolado em innerHTML.
+*/
+function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /* ========== API CLIENT ========== */
 const ApiClient = {
@@ -15,6 +29,22 @@ const ApiClient = {
 
     try {
       const response = await fetch(`${API_URL}${endpoint}`, options);
+
+      /* CORREÇÃO: intercepta 401 e tenta refresh automático do token */
+      if (response.status === 401 && token) {
+        const refreshed = await App.tryRefreshToken();
+        if (refreshed) {
+          headers['Authorization'] = `Bearer ${App.user.token}`;
+          const retry = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+          const retryData = await retry.json();
+          if (!retry.ok) throw new Error(retryData.detail || retryData.message || 'Erro na requisição');
+          return retryData;
+        } else {
+          App.logout();
+          throw new Error('Sessão expirada. Faça login novamente.');
+        }
+      }
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.message || 'Erro na requisição');
       return data;
@@ -91,7 +121,7 @@ const App = {
   currentAlbumId: null,
   currentPhotos: [],
   pendingFiles: [],
-  lightbox: { photos: [], index: 0 },
+  lightbox: { photos: [], index: 0, source: 'album' },
 
   // ========== SESSÃO ==========
   saveSession() {
@@ -120,6 +150,20 @@ const App = {
       return true;
     } catch {
       this.clearSession();
+      return false;
+    }
+  },
+
+  /* CORREÇÃO: refresh automático durante o uso da aplicação */
+  async tryRefreshToken() {
+    try {
+      if (!this.user?.refreshToken) return false;
+      const tokens = await Auth.refresh(this.user.refreshToken);
+      this.user.token = tokens.access_token;
+      this.user.refreshToken = tokens.refresh_token;
+      this.saveSession();
+      return true;
+    } catch {
       return false;
     }
   },
@@ -174,11 +218,14 @@ const App = {
       errEl.classList.remove('hidden');
       return;
     }
-    if (!email || !email.includes('@')) {
+
+    /* CORREÇÃO: validação de e-mail mais robusta */
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errEl.textContent = 'E-mail inválido.';
       errEl.classList.remove('hidden');
       return;
     }
+
     if (pass.length < 6) {
       errEl.textContent = 'Senha mínima de 6 caracteres.';
       errEl.classList.remove('hidden');
@@ -253,15 +300,19 @@ const App = {
     this.navigate('albums');
   },
 
+  /* CORREÇÃO: sidebar-user agora constrói o HTML dinamicamente pois o elemento
+     estava vazio no index.html — os seletores .user-avatar/.user-name/.user-email
+     não existiam no DOM. */
   renderSidebarUser() {
     const u = this.user;
-    const avatar = document.querySelector('.user-avatar');
-    const name = document.querySelector('.user-name');
-    const email = document.querySelector('.user-email');
+    const container = document.getElementById('sidebar-user');
+    if (!container) return;
 
-    if (avatar) avatar.textContent = this.getInitials(u.name);
-    if (name) name.textContent = u.name;
-    if (email) email.textContent = u.email;
+    container.innerHTML = `
+      <div class="user-avatar">${esc(this.getInitials(u.name))}</div>
+      <div class="user-name">${esc(u.name)}</div>
+      <div class="user-email">${esc(u.email)}</div>
+    `;
   },
 
   // ========== NAVEGAÇÃO ==========
@@ -281,7 +332,8 @@ const App = {
       el.classList.add('active');
     }
 
-    const navMap = { albums: 0, favorites: 1, timeline: 2, profile: 3, shared: 4 };
+    /* CORREÇÃO: album-detail mantém o item "Meus álbuns" ativo na sidebar */
+    const navMap = { albums: 0, 'album-detail': 0, favorites: 1, timeline: 2, profile: 3, shared: 4 };
     const navItems = document.querySelectorAll('.nav-item');
     if (navMap[view] !== undefined) {
       const ni = navItems[navMap[view]];
@@ -310,7 +362,6 @@ const App = {
     if (sidebar) sidebar.classList.remove('open');
   },
 
-  // ========== MINIMIZAR SIDEBAR ==========
   toggleSidebarMinimize() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
@@ -361,7 +412,10 @@ const App = {
         email: userData.email,
         name: userData.name,
         token: token,
-        refreshToken: null,
+        /* CORREÇÃO: logins sociais não retornam refreshToken — registramos null
+           explicitamente e tratamos a ausência no tryRefreshToken. O usuário
+           precisará reautenticar após o token expirar neste fluxo. */
+        refreshToken: userData.refresh_token || null,
       };
 
       this.saveSession();
@@ -383,25 +437,33 @@ const App = {
   },
 
   // ========== CHECAR PARÂMETRO DO ÁLBUM ==========
+  /* CORREÇÃO: uso de Promise em vez de setInterval para evitar disparos múltiplos */
   checkAlbumParam() {
     const urlParams = new URLSearchParams(window.location.search);
     const albumId = urlParams.get('album');
+    if (!albumId) return;
 
-    if (albumId) {
-      const checkAlbums = setInterval(() => {
-        if (this.albums.length > 0) {
-          clearInterval(checkAlbums);
-          const album = this.albums.find(a => a.id === albumId);
-          if (album) {
-            this.openAlbum(albumId);
-          } else {
-            this.toast('Álbum não encontrado ou não compartilhado', 'error');
-          }
+    const waitForAlbums = (timeout = 10000) => new Promise((resolve, reject) => {
+      if (this.albums.length > 0) { resolve(); return; }
+      const start = Date.now();
+      const check = () => {
+        if (this.albums.length > 0) { resolve(); return; }
+        if (Date.now() - start >= timeout) { reject(new Error('timeout')); return; }
+        setTimeout(check, 300);
+      };
+      setTimeout(check, 300);
+    });
+
+    waitForAlbums()
+      .then(() => {
+        const album = this.albums.find(a => a.id === albumId);
+        if (album) {
+          this.openAlbum(albumId);
+        } else {
+          this.toast('Álbum não encontrado ou não compartilhado', 'error');
         }
-      }, 500);
-
-      setTimeout(() => clearInterval(checkAlbums), 10000);
-    }
+      })
+      .catch(() => this.toast('Não foi possível abrir o álbum', 'error'));
   },
 
   // ========== ÁLBUNS ==========
@@ -437,22 +499,65 @@ const App = {
     if (count) count.textContent = `${this.albums.length} álbum${this.albums.length !== 1 ? 's' : ''}`;
 
     if (grid) {
+      /* CORREÇÃO XSS: todos os campos do usuário passam por esc() */
       grid.innerHTML = this.albums.map(album => `
-        <div class="album-card" onclick="App.openAlbum('${album.id}')">
+        <div class="album-card" onclick="App.openAlbum('${esc(album.id)}')">
           ${album.cover_url
-          ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
+          ? `<div class="album-cover"><img src="${esc(album.cover_url)}" alt="" loading="lazy" /></div>`
           : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
           <div class="album-info">
-            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
-            <div class="album-title">${album.title}</div>
+            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${esc(this.categoryLabel(album.category))}</span>
+            <div class="album-title">${esc(album.title)}</div>
             <div class="album-meta">
               <span>${album.photo_count || 0} foto${album.photo_count !== 1 ? 's' : ''}</span>
-              ${album.commemorative_date ? `<span class="album-date-badge">${this.formatDate(album.commemorative_date)}</span>` : ''}
+              ${album.commemorative_date ? `<span class="album-date-badge">${esc(this.formatDate(album.commemorative_date))}</span>` : ''}
             </div>
           </div>
         </div>
       `).join('');
     }
+  },
+
+  async loadSharedAlbums() {
+    const section = document.getElementById('shared-albums-section');
+    const grid = document.getElementById('shared-albums-grid');
+    const empty = document.getElementById('shared-albums-empty');
+    if (!grid) return;
+
+    try {
+      const response = await fetch(`${API_URL}/albums/shared`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+      if (!response.ok) return;
+      const albums = await response.json();
+
+      if (!albums.length) {
+        if (section) section.classList.add('hidden');
+        return;
+      }
+
+      if (section) section.classList.remove('hidden');
+      if (empty) empty.classList.add('hidden');
+
+      grid.innerHTML = albums.map(album => `
+        <div class="album-card" onclick="App.openSharedAlbum('${esc(album.id)}')">
+          ${album.cover_url
+          ? `<div class="album-cover"><img src="${esc(album.cover_url)}" alt="" loading="lazy" /></div>`
+          : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
+          <div class="album-info">
+            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${esc(this.categoryLabel(album.category))}</span>
+            <div class="album-title">${esc(album.title)}</div>
+            <div class="album-meta">
+              <span>${album.photo_count || 0} fotos</span>
+              <span class="shared-badge">🔗 Compartilhado</span>
+            </div>
+            <div class="album-owner" style="font-size:.75rem;color:var(--text-muted);margin-top:4px;">
+              👤 Criado por: <strong>${esc(album.owner_name || 'Usuário')}</strong>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    } catch { /* silencioso — seção de compartilhados é opcional */ }
   },
 
   async openAlbum(id) {
@@ -490,12 +595,13 @@ const App = {
   renderAlbumDetailHeader(album, photos) {
     const header = document.getElementById('album-detail-header');
     if (!header) return;
+    /* CORREÇÃO XSS: campos do álbum sanitizados */
     header.innerHTML = `
-      <div class="album-detail-title">${album.title}</div>
-      ${album.description ? `<div class="album-detail-desc">${album.description}</div>` : ''}
+      <div class="album-detail-title">${esc(album.title)}</div>
+      ${album.description ? `<div class="album-detail-desc">${esc(album.description)}</div>` : ''}
       <div class="album-detail-badges">
-        <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
-        ${album.commemorative_date ? `<span class="album-date-badge">📅 ${this.formatDate(album.commemorative_date)}</span>` : ''}
+        <span class="album-category-badge">${this.categoryEmoji(album.category)} ${esc(this.categoryLabel(album.category))}</span>
+        ${album.commemorative_date ? `<span class="album-date-badge">📅 ${esc(this.formatDate(album.commemorative_date))}</span>` : ''}
         <span class="album-category-badge" style="background:var(--purple-light);color:var(--purple-dark)">
           ${photos.length} foto${photos.length !== 1 ? 's' : ''}
         </span>
@@ -566,6 +672,192 @@ const App = {
     }
   },
 
+  // ========== COMPARTILHAMENTO DO ÁLBUM ==========
+
+  /* CORREÇÃO: shareAlbum() estava sendo chamado no HTML mas não existia.
+     Unificado em openShareModal() que abre o modal correto. */
+  shareAlbum() {
+    this.openShareModal();
+  },
+
+  /* CORREÇÃO: openShareModal() não estava implementado.
+     Agora preenche o campo de link antes de abrir o modal. */
+  openShareModal() {
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    if (!album) return;
+
+    const shareLink = `${window.location.origin}${window.location.pathname}?album=${album.id}`;
+    const linkInput = document.getElementById('share-link');
+    if (linkInput) linkInput.value = shareLink;
+
+    this.openModal('modal-share');
+  },
+
+  openShareAlbumModal() {
+    this.openModal('modal-share-album');
+    const container = document.getElementById('share-link-container');
+    if (container) container.style.display = 'none';
+  },
+
+  /* CORREÇÃO: copyLink() não estava implementado */
+  async copyLink() {
+    const input = document.getElementById('share-link');
+    if (!input) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      this.toast('Link copiado! 🔗', 'success');
+    } catch {
+      input.select();
+      document.execCommand('copy');
+      this.toast('Link copiado! 🔗', 'success');
+    }
+  },
+
+  /* CORREÇÃO: copyShareLink() não estava implementado */
+  async copyShareLink() {
+    const input = document.getElementById('share-link-output');
+    if (!input) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      this.toast('Link copiado! 🔗', 'success');
+    } catch {
+      input.select();
+      document.execCommand('copy');
+      this.toast('Link copiado! 🔗', 'success');
+    }
+  },
+
+  async shareAlbumWithUser() {
+    const email = document.getElementById('share-email').value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.toast('Informe um e-mail válido', 'error');
+      return;
+    }
+
+    try {
+      const result = await ApiClient.request(
+        `/albums/${this.currentAlbumId}/share`,
+        'POST',
+        { email },
+        this.user.token
+      );
+
+      this.toast(`Álbum compartilhado com ${email} ✅`, 'success');
+
+      const container = document.getElementById('share-link-container');
+      const output = document.getElementById('share-link-output');
+      if (container && output && result.share_link) {
+        output.value = result.share_link;
+        container.style.display = 'block';
+      }
+    } catch (e) {
+      this.toast('Erro: ' + e.message, 'error');
+    }
+  },
+
+  // ========== COMPARTILHAMENTO SOCIAL ==========
+  shareViaWhatsApp() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text + '\n' + link)}`, '_blank');
+  },
+
+  shareViaTelegram() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
+  },
+
+  shareViaEmail() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const subject = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
+    const body = `Olá! Veja este álbum de fotos:\n\n${link}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  },
+
+  shareViaTwitter() {
+    const link = document.getElementById('share-link').value;
+    const album = this.albums.find(a => a.id === this.currentAlbumId);
+    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
+  },
+
+  shareViaFacebook() {
+    const link = document.getElementById('share-link').value;
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`, '_blank');
+  },
+
+  async loadSharedAlbumsView() {
+    const grid = document.getElementById('shared-albums-grid-full');
+    const empty = document.getElementById('shared-albums-empty-full');
+    if (!grid || !empty) return;
+
+    try {
+      const response = await fetch(`${API_URL}/albums/shared`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+
+      if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
+
+      const albums = await response.json();
+
+      if (!albums.length) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+
+      /* CORREÇÃO XSS */
+      grid.innerHTML = albums.map(album => `
+        <div class="album-card" onclick="App.openSharedAlbum('${esc(album.id)}')">
+          ${album.cover_url
+          ? `<div class="album-cover"><img src="${esc(album.cover_url)}" alt="" loading="lazy" /></div>`
+          : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
+          <div class="album-info">
+            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${esc(this.categoryLabel(album.category))}</span>
+            <div class="album-title">${esc(album.title)}</div>
+            <div class="album-meta">
+              <span>${album.photo_count || 0} fotos</span>
+              <span class="shared-badge">🔗 Compartilhado</span>
+            </div>
+            <div class="album-owner" style="font-size:.75rem;color:var(--text-muted);margin-top:4px;">
+              👤 Criado por: <strong>${esc(album.owner_name || 'Usuário')}</strong>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (error) {
+      console.error('Erro ao carregar álbuns compartilhados:', error);
+      grid.innerHTML = '';
+      empty.classList.remove('hidden');
+    }
+  },
+
+  async openSharedAlbum(albumId) {
+    try {
+      const response = await fetch(`${API_URL}/albums/${albumId}`, {
+        headers: { 'Authorization': `Bearer ${this.user.token}` }
+      });
+
+      if (!response.ok) throw new Error('Erro ao carregar álbum');
+
+      const album = await response.json();
+
+      this.currentAlbumId = albumId;
+      this.albums = [album, ...this.albums.filter(a => a.id !== albumId)];
+
+      this.openAlbum(albumId);
+    } catch (error) {
+      this.toast('Erro ao abrir álbum compartilhado', 'error');
+    }
+  },
+
   // ========== FOTOS ==========
   renderPhotoGrid(gridId, emptyId, photos) {
     const grid = document.getElementById(gridId);
@@ -581,13 +873,14 @@ const App = {
 
     if (empty) empty.classList.add('hidden');
 
+    /* CORREÇÃO XSS: photo.caption sanitizado */
     grid.innerHTML = photos.map((photo, i) => `
       <div class="photo-item ${photo.is_fav ? 'is-fav' : ''}" onclick="App.openLightbox(${i})">
-        <img src="${photo.url}" alt="${photo.caption || ''}" loading="lazy" />
+        <img src="${esc(photo.url)}" alt="${esc(photo.caption || '')}" loading="lazy" />
         <div class="photo-overlay">
-          ${photo.caption ? `<span class="photo-caption">${photo.caption}</span>` : ''}
+          ${photo.caption ? `<span class="photo-caption">${esc(photo.caption)}</span>` : ''}
         </div>
-        <button class="photo-fav" onclick="App.toggleFav(event,'${photo.id}',${photo.is_fav})">
+        <button class="photo-fav" onclick="App.toggleFav(event,'${esc(photo.id)}',${photo.is_fav})">
           ${photo.is_fav ? '♥' : '♡'}
         </button>
       </div>
@@ -624,15 +917,15 @@ const App = {
       }
 
       if (empty) empty.classList.add('hidden');
-      this.lightbox = { photos: favs, index: 0 };
+      this.lightbox = { photos: favs, index: 0, source: 'favorites' };
 
       grid.innerHTML = favs.map((photo, i) => `
         <div class="photo-item is-fav" onclick="App.openGlobalLightbox(${i})">
-          <img src="${photo.url}" alt="" loading="lazy" />
+          <img src="${esc(photo.url)}" alt="" loading="lazy" />
           <div class="photo-overlay">
-            ${photo.caption ? `<span class="photo-caption">${photo.caption}</span>` : ''}
+            ${photo.caption ? `<span class="photo-caption">${esc(photo.caption)}</span>` : ''}
           </div>
-          <button class="photo-fav" onclick="App.toggleFavGlobal(event,'${photo.id}')">♥</button>
+          <button class="photo-fav" onclick="App.toggleFavGlobal(event,'${esc(photo.id)}')">♥</button>
         </div>
       `).join('');
     } catch (e) {
@@ -654,6 +947,7 @@ const App = {
 
   openGlobalLightbox(index) {
     this.lightbox.index = index;
+    this.lightbox.source = 'favorites';
     this.showLightbox();
   },
 
@@ -690,15 +984,16 @@ const App = {
         return b.localeCompare(a);
       });
 
+      /* CORREÇÃO XSS: caption e album.title sanitizados */
       container.innerHTML = sortedKeys.map(month => `
         <div class="timeline-group">
-          <div class="timeline-month">${this.formatMonth(month)}</div>
+          <div class="timeline-month">${esc(this.formatMonth(month))}</div>
           <div class="photo-grid">
             ${groups[month].map(photo => `
               <div class="photo-item">
-                <img src="${photo.url}" alt="" loading="lazy" />
+                <img src="${esc(photo.url)}" alt="" loading="lazy" />
                 <div class="photo-overlay">
-                  <span class="photo-caption">${photo.album?.title || ''}</span>
+                  <span class="photo-caption">${esc(photo.album?.title || '')}</span>
                 </div>
               </div>
             `).join('')}
@@ -714,10 +1009,7 @@ const App = {
   // ========== PERFIL ==========
   async loadProfile() {
     try {
-      if (!this.user?.token) {
-        this.logout();
-        return;
-      }
+      if (!this.user?.token) { this.logout(); return; }
 
       const response = await fetch(`${API_URL}/profile/me`, {
         headers: {
@@ -728,9 +1020,9 @@ const App = {
 
       if (!response.ok) {
         if (response.status === 401) {
-          this.toast('Sessão expirada, faça login novamente', 'error');
-          this.logout();
-          return;
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) { await this.loadProfile(); return; }
+          this.logout(); return;
         }
         throw new Error('Erro ao carregar perfil');
       }
@@ -767,10 +1059,7 @@ const App = {
     const name = document.getElementById('edit-name').value.trim();
     const bio = document.getElementById('edit-bio').value.trim();
 
-    if (!this.user?.token) {
-      this.logout();
-      return;
-    }
+    if (!this.user?.token) { this.logout(); return; }
 
     try {
       const response = await fetch(`${API_URL}/profile/me`, {
@@ -784,9 +1073,9 @@ const App = {
 
       if (!response.ok) {
         if (response.status === 401) {
-          this.toast('Sessão expirada', 'error');
-          this.logout();
-          return;
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) { await this.saveProfile(); return; }
+          this.logout(); return;
         }
         throw new Error('Erro ao atualizar perfil');
       }
@@ -806,25 +1095,13 @@ const App = {
     }
   },
 
-  // ========== UPLOAD FOTO DE PERFIL ==========
   async uploadProfilePic(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      this.toast('Imagem muito grande (máx 5MB)', 'error');
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      this.toast('Formato não suportado', 'error');
-      return;
-    }
-
-    if (!this.user?.token) {
-      this.logout();
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) { this.toast('Imagem muito grande (máx 5MB)', 'error'); return; }
+    if (!file.type.startsWith('image/')) { this.toast('Formato não suportado', 'error'); return; }
+    if (!this.user?.token) { this.logout(); return; }
 
     const formData = new FormData();
     formData.append('file', file);
@@ -838,9 +1115,9 @@ const App = {
 
       if (!response.ok) {
         if (response.status === 401) {
-          this.toast('Sessão expirada', 'error');
-          this.logout();
-          return;
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) { await this.uploadProfilePic(event); return; }
+          this.logout(); return;
         }
         throw new Error('Erro no upload');
       }
@@ -922,7 +1199,6 @@ const App = {
 
     const btn = document.getElementById('btn-upload');
     btn.disabled = true;
-
     const total = this.pendingFiles.length;
 
     try {
@@ -957,112 +1233,9 @@ const App = {
     }
   },
 
-  // ========== COMPARTILHAMENTO SOCIAL ==========
-  shareViaWhatsApp() {
-    const link = document.getElementById('share-link').value;
-    const album = this.albums.find(a => a.id === this.currentAlbumId);
-    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text + '\n' + link)}`, '_blank');
-  },
-
-  shareViaTelegram() {
-    const link = document.getElementById('share-link').value;
-    const album = this.albums.find(a => a.id === this.currentAlbumId);
-    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor\n\nVeja este álbum de fotos:`;
-    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
-  },
-
-  shareViaEmail() {
-    const link = document.getElementById('share-link').value;
-    const album = this.albums.find(a => a.id === this.currentAlbumId);
-    const subject = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
-    const body = `Olá! Veja este álbum de fotos:\n\n${link}`;
-    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  },
-
-  shareViaTwitter() {
-    const link = document.getElementById('share-link').value;
-    const album = this.albums.find(a => a.id === this.currentAlbumId);
-    const text = `📸 ${album ? album.title : 'Álbum'} - Memórias com Amor`;
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`, '_blank');
-  },
-
-  shareViaFacebook() {
-    const link = document.getElementById('share-link').value;
-    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`, '_blank');
-  },
-
-  async loadSharedAlbumsView() {
-    const grid = document.getElementById('shared-albums-grid-full');
-    const empty = document.getElementById('shared-albums-empty-full');
-
-    if (!grid || !empty) return;
-
-    try {
-      const response = await fetch(`${API_URL}/albums/shared`, {
-        headers: { 'Authorization': `Bearer ${this.user.token}` }
-      });
-
-      if (!response.ok) throw new Error('Erro ao carregar álbuns compartilhados');
-
-      const albums = await response.json();
-
-      if (!albums.length) {
-        grid.innerHTML = '';
-        empty.classList.remove('hidden');
-        return;
-      }
-
-      empty.classList.add('hidden');
-
-      grid.innerHTML = albums.map(album => `
-        <div class="album-card" onclick="App.openSharedAlbum('${album.id}')">
-          ${album.cover_url
-          ? `<div class="album-cover"><img src="${album.cover_url}" alt="" loading="lazy" /></div>`
-          : `<div class="album-cover-placeholder">${this.categoryEmoji(album.category)}</div>`}
-          <div class="album-info">
-            <span class="album-category-badge">${this.categoryEmoji(album.category)} ${this.categoryLabel(album.category)}</span>
-            <div class="album-title">${album.title}</div>
-            <div class="album-meta">
-              <span>${album.photo_count || 0} fotos</span>
-              <span class="shared-badge">🔗 Compartilhado</span>
-            </div>
-            <div class="album-owner" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-              👤 Criado por: <strong>${album.owner_name || 'Usuário'}</strong>
-            </div>
-          </div>
-        </div>
-      `).join('');
-
-    } catch (error) {
-      console.error('Erro ao carregar álbuns compartilhados:', error);
-      grid.innerHTML = '';
-      empty.classList.remove('hidden');
-    }
-  },
-
-  async openSharedAlbum(albumId) {
-    try {
-      const response = await fetch(`${API_URL}/albums/${albumId}`, {
-        headers: { 'Authorization': `Bearer ${this.user.token}` }
-      });
-
-      if (!response.ok) throw new Error('Erro ao carregar álbum');
-
-      const album = await response.json();
-
-      this.currentAlbumId = albumId;
-      this.albums = [album, ...this.albums.filter(a => a.id !== albumId)];
-
-      this.openAlbum(albumId);
-    } catch (error) {
-      this.toast('Erro ao abrir álbum compartilhado', 'error');
-    }
-  },
-
   // ========== LIGHTBOX ==========
   openLightbox(index) {
-    this.lightbox = { photos: this.currentPhotos, index };
+    this.lightbox = { photos: this.currentPhotos, index, source: 'album' };
     this.showLightbox();
   },
 
@@ -1131,7 +1304,7 @@ const App = {
         headers: { 'Authorization': `Bearer ${this.user.token}` }
       });
 
-      if (response.status === 204) {
+      if (response.status === 204 || response.ok) {
         this.currentPhotos = this.currentPhotos.filter(p => p.id !== photo.id);
         this.lightbox.photos = this.lightbox.photos.filter(p => p.id !== photo.id);
         this.closeLightboxDirect();
@@ -1143,13 +1316,18 @@ const App = {
         }
 
         this.toast('Foto removida.', 'success');
+
+        /* CORREÇÃO: se o lightbox foi aberto a partir dos favoritos,
+           recarrega a grade de favoritos para remover a foto excluída */
+        if (this.lightbox.source === 'favorites') {
+          this.loadFavorites();
+        }
         return;
       }
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Erro ao remover foto');
 
-      this.toast('Foto removida.', 'success');
     } catch (error) {
       console.error('Erro ao remover foto:', error);
       this.toast('Erro ao remover foto: ' + error.message, 'error');
@@ -1231,5 +1409,4 @@ App.restoreSession().then(logado => {
   }
 });
 
-/* ========== EXPOSE ========== */
 window.App = App;
