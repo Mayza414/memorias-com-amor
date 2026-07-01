@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     upload_dir: str = "/app/uploads"
     max_file_size_mb: int = 20
     allowed_origins: str = "http://localhost"
+    
+    # Adicionar URLs para frontend e backend
+    frontend_url: str = "http://localhost:3000"
+    backend_url: str = "http://localhost:8000"
 
     @property
     def origins_list(self) -> list[str]:
